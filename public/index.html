@@ -440,33 +440,36 @@ B.editor = () => {
   const st = C.st;
   C.editor = { area: st.area.slice(), jails: st.jails.slice(), tool: st.area.length >= 3 ? null : 'draw', drawing: null };
   $('#app').innerHTML =
-    '<div class="scr"><div class="full" id="emap"></div>' +
+    '<div class="scr"><div class="full" id="emap"></div><div id="eDraw" style="position:fixed;inset:0;z-index:550;touch-action:none;display:none;cursor:crosshair"></div>' +
     '<div class="etop card"><b id="eTitle"></b><div class="sub small" id="eHint"></div></div>' +
     '<button class="locbtn" data-act="eLoc" aria-label="내 위치로" style="bottom:calc(env(safe-area-inset-bottom) + 170px)">' + locIcon() + '</button>' +
     '<div class="ebottom"><div class="row" id="eTools"></div><div class="row"><button class="mid" data-act="eCancel" style="flex:1">취소</button><button class="big blue" data-act="eSave" style="flex:2">저장</button></div></div></div>';
   const m = makeMap($('#emap'), true); maps.push(m); C.emap = m;
   m.fitBounds(areaBounds(), { paddingTopLeft:[16,100], paddingBottomRight:[16,170] });
-  const el = $('#emap');
-  el.addEventListener('pointerdown', e => {
+  // 그리기는 지도 위에 투명한 판을 덮어서 받아요 (지도가 손가락 움직임을 가로채지 않게)
+  const pad = $('#eDraw'), mapEl = $('#emap');
+  const toLL = e => { const r = mapEl.getBoundingClientRect(); return m.containerPointToLatLng(L.point(e.clientX - r.left, e.clientY - r.top)); };
+  pad.addEventListener('pointerdown', e => {
     if (!C.editor || C.editor.tool !== 'draw') return;
-    e.preventDefault(); el.setPointerCapture(e.pointerId);
-    C.editor.drawing = [m.mouseEventToLatLng(e)]; C.editor.lastPt = [e.clientX, e.clientY]; U.editor();
+    e.preventDefault(); try { pad.setPointerCapture(e.pointerId); } catch(err){}
+    C.editor.drawing = [toLL(e)]; C.editor.lastPt = [e.clientX, e.clientY]; U.editor();
   });
-  el.addEventListener('pointermove', e => {
+  pad.addEventListener('pointermove', e => {
     const ed = C.editor; if (!ed || !ed.drawing) return;
+    e.preventDefault();
     if (Math.hypot(e.clientX - ed.lastPt[0], e.clientY - ed.lastPt[1]) < 6) return;
-    ed.lastPt = [e.clientX, e.clientY]; ed.drawing.push(m.mouseEventToLatLng(e)); U.editor();
+    ed.lastPt = [e.clientX, e.clientY]; ed.drawing.push(toLL(e)); U.editor();
   });
   const end = () => {
     const ed = C.editor; if (!ed || !ed.drawing) return;
-    if (ed.drawing.length >= 3) {
+    if (ed.drawing.length >= 5) {
       let pts = ed.drawing.map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6)]);
       while (pts.length > 300) pts = pts.filter((_, i) => i % 2 === 0);
-      ed.area = pts; ed.tool = null;
-    }
+      ed.area = pts; ed.tool = null; toast('경기장을 그렸어요. 저장을 눌러야 적용돼요');
+    } else toast('너무 짧아요. 손가락을 떼지 말고 한 바퀴 그려 주세요');
     ed.drawing = null; U.editor();
   };
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end);
   m.on('click', e => {
     const ed = C.editor; if (!ed || ed.tool !== 'jail') return;
     const r = S().jailRadius;
@@ -484,11 +487,11 @@ U.editor = () => {
   $('#eHint').textContent = ed.tool === 'draw' ? '지도 위를 손가락으로 끌어서 경기장 테두리를 그려요. 손을 떼면 완성돼요.' :
     ed.tool === 'jail' ? '빈 곳을 누르면 감옥이 생기고, 감옥을 누르면 지워져요. 반경 ' + s.jailRadius + 'm' :
     '아래 버튼으로 경기장을 다시 그리거나' + (cops ? ' 감옥을 놓을 수 있어요.' : ' 지도를 움직여 확인하세요.');
-  if (ed.tool === 'draw') m.dragging.disable(); else m.dragging.enable();
+  $('#eDraw').style.display = ed.tool === 'draw' ? 'block' : 'none';
   setHTML($('#eTools'), '<button class="chipbtn' + (ed.tool === 'draw' ? ' on' : '') + '" data-act="eDraw" style="flex:1">' + (ed.area.length >= 3 ? '다시 그리기' : '경기장 그리기') + '</button>' +
     (cops ? '<button class="chipbtn' + (ed.tool === 'jail' ? ' on' : '') + '" data-act="eJail" style="flex:1">감옥 놓기</button>' : ''));
   const lay = m._lay; lay.clearLayers();
-  drawArea(lay, ed.area, ed.jails, s.jailRadius, cops);
+  drawArea(lay, ed.drawing ? [] : ed.area, ed.jails, s.jailRadius, cops);
   if (ed.drawing && ed.drawing.length > 1) L.polyline(ed.drawing, { color:'#15171A', weight:3, interactive:false }).addTo(lay);
   drawTokens(lay, C.st.tokens);
 };
