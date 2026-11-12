@@ -234,8 +234,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ===================== 지도 도우미 =====================
-function makeMap(el, interactive){
-  const m = L.map(el, { zoomControl:false, attributionControl:true, dragging:interactive, touchZoom:interactive, scrollWheelZoom:interactive, doubleClickZoom:interactive, boxZoom:false, keyboard:false, tap:false });
+function makeMap(el, interactive, extra){
+  const m = L.map(el, Object.assign({ zoomControl:false, attributionControl:true, dragging:interactive, touchZoom:interactive, scrollWheelZoom:interactive, doubleClickZoom:interactive, boxZoom:false, keyboard:false, tap:false }, extra || {}));
   L.tileLayer(TILE.url, TILE.opt).addTo(m);
   m._lay = L.layerGroup().addTo(m);
   return m;
@@ -444,24 +444,44 @@ B.editor = () => {
     '<div class="etop card"><b id="eTitle"></b><div class="sub small" id="eHint"></div></div>' +
     '<button class="locbtn" data-act="eLoc" aria-label="내 위치로" style="bottom:calc(env(safe-area-inset-bottom) + 170px)">' + locIcon() + '</button>' +
     '<div class="ebottom"><div class="row" id="eTools"></div><div class="row"><button class="mid" data-act="eCancel" style="flex:1">취소</button><button class="big blue" data-act="eSave" style="flex:2">저장</button></div></div></div>';
-  const m = makeMap($('#emap'), true); maps.push(m); C.emap = m;
+  const m = makeMap($('#emap'), true, { zoomSnap:0 }); maps.push(m); C.emap = m;
   m.fitBounds(areaBounds(), { paddingTopLeft:[16,100], paddingBottomRight:[16,170] });
   // 그리기는 지도 위에 투명한 판을 덮어서 받아요 (지도가 손가락 움직임을 가로채지 않게)
   const pad = $('#eDraw'), mapEl = $('#emap');
   const toLL = e => { const r = mapEl.getBoundingClientRect(); return m.containerPointToLatLng(L.point(e.clientX - r.left, e.clientY - r.top)); };
+  // 손가락 하나 = 그리기, 손가락 둘 = 지도 이동·확대축소
+  const fingers = new Map(); let pinch = null;
+  const cpt = (x, y) => { const r = mapEl.getBoundingClientRect(); return L.point(x - r.left, y - r.top); };
+  const two = () => { const a = [...fingers.values()]; return { mx:(a[0].x + a[1].x) / 2, my:(a[0].y + a[1].y) / 2, d:Math.max(1, Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y)) }; };
   pad.addEventListener('pointerdown', e => {
-    if (!C.editor || C.editor.tool !== 'draw') return;
+    const ed = C.editor; if (!ed || ed.tool !== 'draw') return;
     e.preventDefault(); try { pad.setPointerCapture(e.pointerId); } catch(err){}
-    C.editor.drawing = [toLL(e)]; C.editor.lastPt = [e.clientX, e.clientY]; U.editor();
+    fingers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (fingers.size >= 2) { ed.drawing = null; ed.gestured = true; pinch = two(); U.editor(); return; }
+    if (ed.gestured) return;
+    ed.drawing = [toLL(e)]; ed.lastPt = [e.clientX, e.clientY]; U.editor();
   });
   pad.addEventListener('pointermove', e => {
-    const ed = C.editor; if (!ed || !ed.drawing) return;
+    const ed = C.editor; if (!ed || !fingers.has(e.pointerId)) return;
     e.preventDefault();
+    fingers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (fingers.size >= 2 && pinch) {
+      const now = two();
+      const z = m.getZoom() + Math.log2(now.d / pinch.d);
+      m.setZoomAround(cpt(now.mx, now.my), Math.max(m.getMinZoom(), Math.min(19, z)), { animate:false });
+      m.panBy([pinch.mx - now.mx, pinch.my - now.my], { animate:false });
+      pinch = now; return;
+    }
+    if (!ed.drawing) return;
     if (Math.hypot(e.clientX - ed.lastPt[0], e.clientY - ed.lastPt[1]) < 6) return;
     ed.lastPt = [e.clientX, e.clientY]; ed.drawing.push(toLL(e)); U.editor();
   });
-  const end = () => {
-    const ed = C.editor; if (!ed || !ed.drawing) return;
+  const end = e => {
+    const ed = C.editor; if (!ed) return;
+    fingers.delete(e.pointerId);
+    if (fingers.size < 2) pinch = null;
+    if (fingers.size === 0) ed.gestured = false;
+    if (!ed.drawing || fingers.size > 0) return;
     if (ed.drawing.length >= 5) {
       let pts = ed.drawing.map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6)]);
       while (pts.length > 300) pts = pts.filter((_, i) => i % 2 === 0);
@@ -484,7 +504,7 @@ U.editor = () => {
   const ed = C.editor, s = S(), m = C.emap; if (!ed || !m) return;
   const cops = s.mode === 'cops';
   $('#eTitle').textContent = ed.tool === 'draw' ? '경기장 그리기' : ed.tool === 'jail' ? '감옥 놓기 (' + ed.jails.length + '/5)' : '경기장' + (cops ? '·감옥' : '') + ' 편집';
-  $('#eHint').textContent = ed.tool === 'draw' ? '지도 위를 손가락으로 끌어서 경기장 테두리를 그려요. 손을 떼면 완성돼요.' :
+  $('#eHint').textContent = ed.tool === 'draw' ? '한 손가락으로 끌어서 테두리를 그려요 (손을 떼면 완성). 두 손가락으로는 지도를 옮기고 확대·축소해요.' :
     ed.tool === 'jail' ? '빈 곳을 누르면 감옥이 생기고, 감옥을 누르면 지워져요. 반경 ' + s.jailRadius + 'm' :
     '아래 버튼으로 경기장을 다시 그리거나' + (cops ? ' 감옥을 놓을 수 있어요.' : ' 지도를 움직여 확인하세요.');
   $('#eDraw').style.display = ed.tool === 'draw' ? 'block' : 'none';
