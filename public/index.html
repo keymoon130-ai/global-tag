@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F7F9">
+<title>글로벌 술래잡기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#F6F7F9; --card:#FFFFFF; --ink:#15171A; --sub:#5B6270; --line:#E3E7EC; --soft:#F1F3F5;
+  --blue:#1F6FEB; --blue-ink:#1756C2; --blue-bg:#EAF1FE;
+  --orange:#E8590C; --orange-btn:#D9480F; --orange-ink:#A93A06; --orange-bg:#FDEBDD;
+  --gray:#9AA1AC; --red:#C92A2A;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans KR',system-ui,sans-serif;font-size:16px}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer}
+#app{max-width:480px;margin:0 auto;min-height:100dvh;position:relative}
+.scr{min-height:100dvh;position:relative}
+.pad{padding:calc(env(safe-area-inset-top) + 24px) 18px calc(env(safe-area-inset-bottom) + 24px);display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
+.card{background:var(--card);border-radius:16px;padding:14px 16px}
+.row{display:flex;align-items:center;gap:10px}
+.sub{color:var(--sub);font-size:14px}
+.small{font-size:13px}
+.big{width:100%;min-height:62px;border:0;border-radius:18px;font-size:20px;font-weight:900;padding:0 16px}
+.big.blue{background:var(--blue);color:#fff}
+.big.orange{background:var(--orange-btn);color:#fff}
+.big.dark{background:var(--ink);color:#fff}
+.big.gray{background:#E9ECF0;color:var(--sub);cursor:default;display:flex;align-items:center;justify-content:center;gap:8px;font-size:18px}
+.mid{width:100%;min-height:52px;border:2px solid #D5DAE1;border-radius:14px;background:#fff;font-weight:700;font-size:17px}
+.mid.wish{border-color:var(--orange);background:var(--orange-bg);color:var(--orange-ink)}
+.chipbtn{min-height:44px;padding:0 14px;border:2px solid #D5DAE1;border-radius:12px;background:#fff;font-weight:700;font-size:15px}
+.chipbtn.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.link{border:0;background:transparent;color:var(--sub);font-size:15px;min-height:44px;padding:0 6px}
+.input{height:56px;border-radius:14px;border:2px solid #D5DAE1;padding:0 16px;font-size:18px;background:#fff;width:100%}
+.input:focus{outline:none;border-color:var(--blue)}
+.err{background:#FFE3E3;color:#A51D1D;border-radius:12px;padding:10px 14px;font-size:15px;font-weight:700}
+.warnbox{background:#FFF3BF;color:#5C4400;border-radius:12px;padding:10px 14px;font-size:14px}
+.chip{font-size:12px;font-weight:700;border-radius:8px;padding:3px 8px;white-space:nowrap}
+.c-host{background:#E9ECF0;color:#3A404A}
+.c-wish{background:var(--orange-bg);color:var(--orange-ink)}
+.c-warn{background:#FFE3E3;color:#A51D1D}
+.c-ok{background:#E3F4E4;color:#1F6B2A}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:10px 14px;min-height:56px}
+.av{width:36px;height:36px;border-radius:18px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.tg{width:56px;height:32px;border-radius:16px;border:0;padding:4px;display:flex;flex:none}
+.tg span{width:24px;height:24px;border-radius:12px;background:#fff;display:block}
+.tg.on{background:var(--blue);justify-content:flex-end}
+.tg.off{background:#C9CED6;justify-content:flex-start}
+.mapcard{position:relative;height:190px;border-radius:16px;overflow:hidden;background:#E6EBEF}
+.mapcard .map{position:absolute;inset:0}
+.maptag{position:absolute;left:10px;top:10px;z-index:500;background:rgba(255,255,255,.95);border-radius:8px;padding:4px 10px;font-size:13px;font-weight:700}
+.mapbtn{position:absolute;right:10px;top:10px;z-index:500;background:var(--ink);color:#fff;border:0;border-radius:10px;min-height:36px;padding:0 12px;font-size:13px;font-weight:700}
+.full{position:fixed;inset:0;max-width:480px;margin:0 auto;background:#E6EBEF}
+.topbar{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 10px);z-index:600;background:#fff;border-radius:18px;padding:8px 10px 8px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(21,23,26,.14)}
+.topbar .t small{display:block;font-size:11px;color:var(--sub)}
+.topbar .t b{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.05}
+.rolechip{font-size:15px;font-weight:700;border-radius:10px;padding:5px 10px;white-space:nowrap}
+.r-chaser{background:var(--orange-bg);color:var(--orange-ink)}
+.r-runner{background:var(--blue-bg);color:var(--blue-ink)}
+.r-out{background:#E9ECF0;color:#3A404A}
+.banner{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 82px);z-index:590;border-radius:12px;padding:8px 12px;font-size:14px;font-weight:700;text-align:center}
+.locbtn{position:fixed;right:max(12px,calc(50vw - 228px));bottom:calc(env(safe-area-inset-bottom) + 190px);z-index:600;width:48px;height:48px;border-radius:24px;border:0;background:#fff;box-shadow:0 2px 10px rgba(21,23,26,.2);display:flex;align-items:center;justify-content:center}
+.bottom{position:fixed;left:50%;transform:translateX(-50%);width:min(480px,100vw);bottom:0;z-index:600;background:#fff;border-radius:24px 24px 0 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -4px 20px rgba(21,23,26,.12);display:flex;flex-direction:column;gap:8px}
+.hint{font-size:14px;color:var(--sub);text-align:center}
+.report{display:flex;gap:8px;align-items:center}
+.report span{flex:1;font-weight:700;font-size:17px}
+.report .ok{min-height:54px;padding:0 20px;border:0;border-radius:14px;background:var(--blue);color:#fff;font-size:18px;font-weight:900}
+.report .no{min-height:54px;padding:0 12px;border:2px solid #D5DAE1;border-radius:14px;background:#fff;font-size:15px}
+.progress{height:10px;border-radius:5px;background:#E9ECF0;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--blue)}
+.ov{position:fixed;inset:0;z-index:900;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:28px}
+.ov.red{background:var(--red);color:#fff}
+.ov.dark{background:rgba(21,23,26,.95);color:#fff}
+.ov h2{margin:0;font-size:32px;font-weight:900}
+.ov p{margin:0;font-size:18px}
+.ov .count{font-size:80px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.ov .pill{font-size:14px;background:rgba(0,0,0,.25);border-radius:20px;padding:6px 14px}
+.sheet{position:fixed;inset:0;z-index:950;background:rgba(21,23,26,.5);display:flex;flex-direction:column;justify-content:flex-end}
+.sheet .in{background:#fff;border-radius:24px 24px 0 0;padding:22px 18px calc(env(safe-area-inset-bottom) + 22px);display:flex;flex-direction:column;gap:12px;max-height:88dvh;overflow:auto;width:100%;max-width:480px;margin:0 auto}
+.sheet h3{margin:0;font-size:24px;font-weight:900;text-align:center}
+.album{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.album figure{margin:0;aspect-ratio:1;border-radius:10px;background:#DDE2E8;overflow:hidden;position:relative}
+.album img{width:100%;height:100%;object-fit:cover;display:block}
+.album figcaption{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.6));color:#fff;font-size:11px;font-weight:700;padding:10px 6px 4px}
+.toasts{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 36px);top:calc(env(safe-area-inset-top) + 130px);z-index:1000;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:var(--ink);color:#fff;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:700;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.net{position:fixed;left:0;right:0;top:0;z-index:1100;background:#15171A;color:#fff;text-align:center;font-size:14px;font-weight:700;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
+.form{display:grid;grid-template-columns:1fr 128px;gap:8px 10px;align-items:center}
+.form h4{grid-column:1 / -1;margin:10px 0 0;font-size:14px;color:var(--sub)}
+.form label{font-size:15px}
+.form input[type=number],.form select{height:44px;border:2px solid #D5DAE1;border-radius:10px;padding:0 8px;background:#fff;width:100%}
+.etop{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 10px);z-index:600;box-shadow:0 4px 16px rgba(21,23,26,.14)}
+.ebottom{position:fixed;left:50%;transform:translateX(-50%);width:min(480px,100vw);bottom:0;z-index:600;background:#fff;border-radius:24px 24px 0 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:10px;box-shadow:0 -4px 20px rgba(21,23,26,.12)}
+.tk{position:relative}
+.tk i{position:absolute;left:-10px;top:-10px;width:20px;height:20px;border-radius:50%;background:var(--c);border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)}
+.tk i.me{left:-13px;top:-13px;width:26px;height:26px;box-shadow:0 0 0 9px rgba(31,111,235,.22),0 2px 5px rgba(0,0,0,.35)}
+.tk i.st{opacity:.7;border-style:dashed}
+.tk span{position:absolute;top:14px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:13px;font-weight:700;color:#15171A;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;pointer-events:none}
+.jl{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font-size:13px;font-weight:700;color:#15171A;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#3A404A;justify-content:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:4px;vertical-align:-1px}
+.sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="net"></div>
+<div class="toasts" id="toasts"></div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" class="sr" aria-hidden="true" tabindex="-1">
+<script>
+(function(){
+'use strict';
+
+// ===================== 공통 =====================
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TN = { tag:['술래','도망자'], hide:['술래','숨는 사람'], cops:['경찰','도둑'], zombie:['좀비','생존자'] };
+const MODE_NAME = { tag:'술래잡기', hide:'숨바꼭질', cops:'경찰과 도둑', zombie:'좀비감염' };
+const TILE = { url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opt:{ maxZoom:19, attribution:'&copy; OpenStreetMap' } };
+function ls(k, v){ try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){ return null; } }
+function rid(){ const a = new Uint8Array(16); crypto.getRandomValues(a); return Array.from(a, b => b.toString(16).padStart(2,'0')).join(''); }
+function fmt(sec){ const s = Math.max(0, Math.ceil(sec)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+function setHTML(el, html){ if (el && el._h !== html) { el.innerHTML = html; el._h = html; } }
+
+const C = {
+  token: ls('gt_token') || (() => { const t = rid(); ls('gt_token', t); return t; })(),
+  name: ls('gt_name') || '',
+  code: ls('gt_room') || null,
+  sound: ls('gt_sound') !== '0',
+  ws: null, open: false, wantConn: false, retry: 0, st: null, offset: 0,
+  screen: null, err: '', joinOpen: false, editor: null, settingsOpen: false, bigMap: false,
+  askReport: false, albumOpen: false, photos: {}, photoAsked: {}, wake: null, geoErr: null, geoWatch: null, lastPosSent: 0, pos: null
+};
+const params = new URLSearchParams(location.search);
+if (params.get('room')) { C.joinCode = params.get('room').toUpperCase().slice(0,4); C.joinOpen = true; if (C.code !== C.joinCode) C.code = null; }
+const serverNow = () => Date.now() + C.offset;
+const me = () => C.st && C.st.me;
+const S = () => C.st ? C.st.settings : null;
+const cw = () => TN[S() ? S().mode : 'tag'][0];
+const rw = () => TN[S() ? S().mode : 'tag'][1];
+
+// ===================== 소리·진동 =====================
+let audio = null;
+function unlockAudio(){ if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } if (audio && audio.state === 'suspended') audio.resume(); }
+function beep(f){
+  if (!audio) return;
+  try { const o = audio.createOscillator(), g = audio.createGain(); o.type = 'square'; o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.18); } catch(e){}
+}
+function buzz(p){ if (navigator.vibrate) try { navigator.vibrate(p); } catch(e){} }
+document.addEventListener('pointerdown', unlockAudio, { capture:true });
+
+// ===================== 토스트 =====================
+function toast(text){
+  const el = document.createElement('div'); el.className = 'toast'; el.textContent = text;
+  const box = $('#toasts'); box.appendChild(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ===================== 연결 =====================
+function connect(){
+  if (!C.code) return;
+  C.wantConn = true;
+  try { if (C.ws) C.ws.close(); } catch(e){}
+  const url = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/' + C.code + '?token=' + C.token + '&name=' + encodeURIComponent(C.name);
+  const ws = new WebSocket(url); C.ws = ws;
+  ws.onopen = () => { C.open = true; C.retry = 0; if (C.pos) sendPos(true); if (document.visibilityState === 'hidden') send({ type:'away' }); render(); };
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch(err){ return; }
+    if (m.type === 'state') { C.st = m; C.offset = m.now - Date.now(); C.stVer = (C.stVer || 0) + 1; render(); }
+    else if (m.type === 'toast') { toast(m.text); }
+    else if (m.type === 'photo') { C.photos[m.id] = m.data; render(); }
+    else if (m.type === 'error') { C.err = m.text; leaveRoom(true); }
+    else if (m.type === 'left') { leaveRoom(true); }
+  };
+  ws.onclose = () => {
+    if (C.ws !== ws) return;
+    C.open = false;
+    if (C.wantConn && C.code) { const d = Math.min(5000, 800 * Math.pow(2, C.retry++)); setTimeout(() => { if (C.wantConn && C.ws === ws) connect(); }, d); }
+    render();
+  };
+  startGeo();
+}
+function send(o){ if (C.ws && C.open) try { C.ws.send(JSON.stringify(o)); } catch(e){} }
+function leaveRoom(silent){
+  C.wantConn = false; C.code = null; C.st = null; ls('gt_room', null);
+  try { if (C.ws) C.ws.close(); } catch(e){}
+  C.ws = null; C.open = false; C.editor = null; C.settingsOpen = false; C.bigMap = false;
+  if (!silent) toast('방에서 나왔어요');
+  history.replaceState(null, '', location.pathname);
+  render();
+}
+setInterval(() => send({ type:'ping' }), 20000);
+
+// ===================== 위치 =====================
+function startGeo(){
+  if (C.geoWatch != null) return;
+  if (!navigator.geolocation) { C.geoErr = '이 브라우저는 위치 기능을 지원하지 않아요'; render(); return; }
+  C.geoWatch = navigator.geolocation.watchPosition(p => {
+    C.pos = { lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy) };
+    C.geoErr = null; sendPos(false);
+  }, err => {
+    C.geoErr = err.code === 1 ? '위치 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 위치 권한을 허용해 주세요.' : '위치를 아직 못 잡았어요. 하늘이 보이는 곳으로 가 보세요.';
+    render();
+  }, { enableHighAccuracy:true, maximumAge:1000, timeout:20000 });
+}
+function sendPos(force){
+  const now = Date.now();
+  if (!C.pos || (!force && now - C.lastPosSent < 2000)) return;
+  C.lastPosSent = now; send({ type:'pos', lat:C.pos.lat, lng:C.pos.lng, acc:C.pos.acc });
+}
+setInterval(() => sendPos(true), 5000);
+
+// ===================== 화면 켜두기 · 앱 전환 =====================
+async function keepAwake(){
+  if (!('wakeLock' in navigator) || C.wake || document.visibilityState !== 'visible') return;
+  try { C.wake = await navigator.wakeLock.request('screen'); C.wake.addEventListener('release', () => { C.wake = null; }); } catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') send({ type:'away' });
+  else {
+    if (C.code && (!C.ws || C.ws.readyState > 1)) connect(); else send({ type:'back' });
+    sendPos(true);
+    if (C.screen === 'game') keepAwake();
+  }
+});
+
+// ===================== 지도 도우미 =====================
+function makeMap(el, interactive){
+  const m = L.map(el, { zoomControl:false, attributionControl:true, dragging:interactive, touchZoom:interactive, scrollWheelZoom:interactive, doubleClickZoom:interactive, boxZoom:false, keyboard:false, tap:false });
+  L.tileLayer(TILE.url, TILE.opt).addTo(m);
+  m._lay = L.layerGroup().addTo(m);
+  return m;
+}
+function areaBounds(){
+  const st = C.st;
+  if (st && st.area && st.area.length >= 3) return L.latLngBounds(st.area);
+  if (C.pos) return L.latLng(C.pos.lat, C.pos.lng).toBounds(300);
+  return L.latLngBounds([[37.56,126.97],[37.57,126.98]]);
+}
+function drawArea(lay, area, jails, radius, showJails){
+  if (area && area.length >= 3) L.polygon(area, { color:'#1F6FEB', weight:3, dashArray:'10 8', fillOpacity:0.07, interactive:false }).addTo(lay);
+  if (showJails) (jails || []).forEach((j, i) => {
+    L.circle(j, { radius, color:'#3A404A', weight:2, dashArray:'5 4', fillColor:'#5B6270', fillOpacity:0.15, interactive:false }).addTo(lay);
+    L.marker(j, { icon:L.divIcon({ className:'', html:'<div class="jl">감옥 ' + (i+1) + '</div>', iconSize:[0,0] }), interactive:false, keyboard:false }).addTo(lay);
+  });
+}
+function drawTokens(lay, tokens){
+  (tokens || []).forEach(t => {
+    const col = t.kind === 'out' ? '#9AA1AC' : t.kind === 'enemy' ? '#E8590C' : (t.kind === 'me' && me() && me().state === 'out' ? '#9AA1AC' : '#1F6FEB');
+    const lb = t.kind === 'me' ? '나' : t.name + (t.kind === 'out' ? ' · 아웃' : '') + (t.stale != null ? ' · ' + t.stale + '초 전' : '') + (t.pub ? ' · 공개' : '') + (t.disc ? ' · 끊김' : '') + (t.jailed ? ' · 수감' : '');
+    if (t.kind === 'me' && t.acc && t.acc < 200) L.circle([t.lat, t.lng], { radius:t.acc, color:'#1F6FEB', weight:1, opacity:.3, fillOpacity:.06, interactive:false }).addTo(lay);
+    const h = '<div class="tk" style="--c:' + col + '"><i class="' + (t.kind === 'me' ? 'me' : '') + ((t.stale != null || t.disc) ? ' st' : '') + '"></i><span>' + esc(lb) + '</span></div>';
+    L.marker([t.lat, t.lng], { icon:L.divIcon({ className:'', html:h, iconSize:[0,0] }), interactive:false, keyboard:false, zIndexOffset:t.kind === 'me' ? 1000 : 0 }).addTo(lay);
+  });
+}
+
+// ===================== 화면 정하기 =====================
+function wantScreen(){
+  if (!C.code) return 'start';
+  if (!C.st) return 'connecting';
+  if (C.st.phase === 'lobby') return C.editor ? 'editor' : 'lobby';
+  if (C.st.phase === 'ended') return 'result';
+  return 'game';
+}
+const B = {}; // 화면 만들기
+const U = {}; // 화면 갱신
+let maps = [];
+function render(){
+  const w = wantScreen();
+  if (w !== C.screen) {
+    maps.forEach(m => { try { m.remove(); } catch(e){} }); maps = [];
+    if (C.wake && w !== 'game') { try { C.wake.release(); } catch(e){} C.wake = null; }
+    C.screen = w; C.askReport = false; C.albumOpen = false;
+    $('#app').innerHTML = ''; $('#app')._h = null;
+    B[w]();
+    window.scrollTo(0, 0);
+  }
+  if (U[w]) U[w]();
+  setHTML($('#net'), C.code && !C.open && C.screen !== 'start' ? '<div class="net">연결이 끊겼어요 · 다시 연결하는 중…</div>' : '');
+}
+setInterval(() => { if (C.screen === 'game' || C.screen === 'lobby') render(); }, 500);
+
+// ===================== 시작 =====================
+B.start = () => {
+  $('#app').innerHTML =
+  '<div class="scr"><div class="pad" style="padding-top:calc(env(safe-area-inset-top) + 72px);gap:28px">' +
+    '<div style="display:flex;flex-direction:column;gap:10px">' +
+      '<svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="26" fill="#1F6FEB"/><circle cx="28" cy="28" r="15" fill="none" stroke="#fff" stroke-width="4"/><circle cx="28" cy="28" r="5" fill="#fff"/></svg>' +
+      '<h1 style="font-size:34px">글로벌 술래잡기</h1><div class="sub" style="font-size:17px">친구들과 진짜 위치로 하는 술래잡기</div>' +
+    '</div>' +
+    '<div id="sErr"></div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px"><label for="nick" style="font-weight:700">닉네임</label><input id="nick" class="input" maxlength="12" placeholder="이름을 적어주세요" autocomplete="nickname"></div>' +
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+      '<button class="big blue" id="bCreate">방 만들기</button>' +
+      '<button class="mid" id="bJoinOpen" style="min-height:62px;font-size:19px">방 참가</button>' +
+      '<div id="joinBox" style="display:none;gap:8px"><label for="code" class="sr">방 코드</label><input id="code" class="input" maxlength="4" placeholder="방 코드 4자리" style="flex:1;min-width:0;letter-spacing:5px;text-transform:uppercase" autocomplete="off"><button class="big dark" id="bJoin" style="width:104px;min-height:56px;font-size:18px">입장</button></div>' +
+    '</div>' +
+    '<div class="sub small" style="text-align:center;margin-top:auto">위치는 게임 중에만 쓰이고, 방이 끝나면 삭제돼요.</div>' +
+  '</div></div>';
+  const nick = $('#nick'); nick.value = C.name;
+  const code = $('#code'); if (C.joinCode) code.value = C.joinCode;
+  const showJoin = () => { $('#joinBox').style.display = 'flex'; };
+  if (C.joinOpen) showJoin();
+  const needName = () => { const n = nick.value.trim(); if (!n) { C.err = '닉네임을 먼저 적어주세요'; render(); nick.focus(); return null; } C.name = n.slice(0,12); ls('gt_name', C.name); return C.name; };
+  $('#bJoinOpen').onclick = () => { C.joinOpen = true; showJoin(); code.focus(); };
+  $('#bCreate').onclick = async () => {
+    if (!needName()) return;
+    $('#bCreate').disabled = true; C.err = '';
+    try {
+      const r = await fetch('/api/create', { method:'POST' }); const j = await r.json();
+      if (!j.code) throw new Error(j.error || 'fail');
+      C.code = j.code; ls('gt_room', C.code); connect(); render();
+    } catch(e) { C.err = '방을 만들지 못했어요. 인터넷 연결을 확인해 주세요.'; render(); }
+    const b = $('#bCreate'); if (b) b.disabled = false;
+  };
+  const join = () => {
+    if (!needName()) return;
+    const c = code.value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{4}$/.test(c)) { C.err = '방 코드 4자리를 확인해 주세요'; render(); return; }
+    C.err = ''; C.code = c; ls('gt_room', c); connect(); render();
+  };
+  $('#bJoin').onclick = join;
+  code.addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+};
+U.start = () => { setHTML($('#sErr'), C.err ? '<div class="err">' + esc(C.err) + '</div>' : ''); };
+B.connecting = () => { $('#app').innerHTML = '<div class="scr"><div class="pad" style="align-items:center;justify-content:center;min-height:100dvh"><div class="sub">방에 들어가는 중…</div><button class="link" id="bCancel">취소</button></div></div>'; $('#bCancel').onclick = () => leaveRoom(true); };
+
+// ===================== 대기실 =====================
+B.lobby = () => {
+  $('#app').innerHTML =
+  '<div class="scr"><div class="pad">' +
+    '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
+    '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div class="sub small">모드</div><div id="lMode" style="font-weight:700"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
+    '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
+    '<div id="lGeo"></div>' +
+    '<div class="row" style="justify-content:space-between;padding:2px 4px 0"><b id="lCount"></b><span class="sub small">지망자 중에서 랜덤으로 뽑아요</span></div>' +
+    '<div class="list" id="lList"></div>' +
+    '<div class="card row" style="padding:10px 10px 10px 16px"><div style="flex:1"><div style="font-weight:700">내 경고음</div><div class="sub small">경기장 밖으로 나가면 소리로 알려줘요</div></div><button class="chipbtn" data-act="soundtest">소리 테스트</button><button class="tg" id="lSound" data-act="sound" aria-label="경고음 켜기/끄기"><span></span></button></div>' +
+    '<div id="lActions" style="display:flex;flex-direction:column;gap:12px"></div>' +
+  '</div></div><div id="lOv"></div>';
+  const m = makeMap($('#lmap'), false); maps.push(m); C.lmap = m;
+  m.fitBounds(areaBounds(), { padding:[16,16] }); C.lmapArea = '';
+};
+U.lobby = () => {
+  const st = C.st, s = st.settings, m = me();
+  $('#lCode').textContent = st.code;
+  $('#lMode').textContent = MODE_NAME[s.mode] + ' · ' + Math.round(s.timeLimit/60) + '분 · ' + cw() + ' ' + s.chaserCount + '명';
+  $('#lAreaTag').textContent = st.area.length >= 3 ? ('경기장' + (s.mode === 'cops' ? ' · 감옥 ' + st.jails.length + '개' : '')) : '경기장을 아직 안 그렸어요';
+  const lay = C.lmap._lay; lay.clearLayers(); drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay, st.tokens);
+  const ak = JSON.stringify(st.area); if (ak !== C.lmapArea && st.area.length >= 3) { C.lmapArea = ak; C.lmap.fitBounds(areaBounds(), { padding:[16,16] }); }
+  let geo = '';
+  if (C.geoErr) geo = '<div class="warnbox">' + esc(C.geoErr) + '</div>';
+  else if (!C.pos) geo = '<div class="warnbox">내 위치를 찾는 중이에요… 위치 권한 창이 뜨면 허용을 눌러 주세요.</div>';
+  else if (C.pos.acc > 50) geo = '<div class="warnbox">위치 정확도가 낮아요 (오차 약 ' + C.pos.acc + 'm). 밖으로 나가면 좋아져요.</div>';
+  setHTML($('#lGeo'), geo);
+  $('#lCount').textContent = '참가자 ' + st.players.length + '명';
+  setHTML($('#lList'), st.players.map(p =>
+    '<div class="item"><div class="av">' + esc(p.name.charAt(0)) + '</div><span style="flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + (p.id === m.id ? ' (나)' : '') + '</span>' +
+    (p.host ? '<span class="chip c-host">방장</span>' : '') + (p.wish ? '<span class="chip c-wish">' + cw() + ' 지망</span>' : '') +
+    (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : '') + '</div>').join(''));
+  const sb = $('#lSound'); sb.className = 'tg ' + (C.sound ? 'on' : 'off');
+  let act = '<button class="mid' + (m.wish ? ' wish' : '') + '" data-act="wish">' + cw() + (m.wish ? ' 지망 취소' : ' 지망하기') + '</button>';
+  if (m.host) {
+    act += '<div class="row"><button class="mid" data-act="settings" style="flex:1">게임 설정</button><button class="mid" data-act="editor" style="flex:1">경기장' + (s.mode === 'cops' ? '·감옥' : '') + ' 편집</button></div>';
+    act += '<button class="big blue" data-act="start">게임 시작</button>';
+  } else act += '<div class="big gray" style="font-weight:500;font-size:16px">방장이 시작하길 기다리는 중…</div>';
+  setHTML($('#lActions'), act);
+  setHTML($('#lOv'), (C.settingsOpen && m.host ? settingsSheet() : '') + (C.bigMap ? '<div class="sheet" style="background:#E6EBEF;justify-content:stretch"><div id="bigmap" style="position:absolute;inset:0"></div><div class="etop card"><b>' + ($('#lAreaTag').textContent) + '</b><div class="sub small">파란 점선 안에서만 움직여요' + (s.mode === 'cops' ? ' · 회색 원이 감옥이에요' : '') + '</div></div><div class="ebottom"><button class="big blue" data-act="bigmapClose">확인했어요</button></div></div>' : ''));
+  if (C.bigMap && !C.bigMapObj) { const bm = makeMap($('#bigmap'), true); C.bigMapObj = bm; maps.push(bm); bm.fitBounds(areaBounds(), { paddingTopLeft:[16,90], paddingBottomRight:[16,110] }); }
+  if (C.bigMapObj) { const lay2 = C.bigMapObj._lay; lay2.clearLayers(); drawArea(lay2, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay2, st.tokens); }
+  if (C.settingsOpen && m.host && !C.settingsFilled) fillSettings();
+};
+
+// 방장 설정
+const SCHEMA = [
+  ['h','기본'],
+  ['mode','모드','sel',[['tag','술래잡기'],['hide','숨바꼭질'],['cops','경찰과 도둑'],['zombie','좀비감염']]],
+  ['chaserCount','잡는 쪽 인원','num'],
+  ['timeLimit','제한 시간(초)','num'],
+  ['hideTime','숨는 시간(초)','num'],
+  ['winMode','승리 조건','sel',[['all','전원 잡기'],['n','N명 잡기']]],
+  ['winN','└ N명','num'],
+  ['catchDist','잡기 가능 거리(m)','num'],
+  ['h','위치 공개'],
+  ['revealC2R','잡는 쪽이 상대 보기','sel',[['hidden','안 보임'],['interval','N초마다'],['always','항상']]],
+  ['revealC2RSec','└ 간격(초)','num'],
+  ['revealR2C','도망치는 쪽이 상대 보기','sel',[['hidden','안 보임'],['interval','N초마다'],['always','항상']]],
+  ['revealR2CSec','└ 간격(초)','num'],
+  ['teamSee','같은 팀끼리 위치 보기','bool'],
+  ['h','이탈 · 끊김'],
+  ['boundaryAllow','경기장·감옥 이탈 허용(초)','num'],
+  ['disconnectAllow','끊김 허용(초) → 넘으면 위치 공개','num'],
+  ['h','술래잡기 · 숨바꼭질'],
+  ['transfer','술래 넘기기','bool'],
+  ['transferCountdown','└ 넘긴 뒤 카운트다운(초)','num'],
+  ['h','경찰과 도둑'],
+  ['rescueHold','구출 누르는 시간(초)','num'],
+  ['jailRadius','감옥 반경(m)','num'],
+  ['h','사진 모드'],
+  ['photoOn','사진 모드','bool'],
+  ['photoEvery','└ 간격(초)','num'],
+  ['photoDeadline','└ 보내는 제한 시간(초)','num'],
+  ['photoSenders','└ 보내는 사람','sel',[['runners','도망치는 쪽만'],['all','전원']]],
+  ['photoViewers','└ 보는 사람','sel',[['chasers','잡는 쪽만'],['all','전원']]]
+];
+function settingsSheet(){
+  let f = '<div class="form">';
+  SCHEMA.forEach(r => {
+    if (r[0] === 'h') { f += '<h4>' + r[1] + '</h4>'; return; }
+    const id = 'f_' + r[0];
+    f += '<label for="' + id + '">' + r[1] + '</label>';
+    if (r[2] === 'sel') f += '<select id="' + id + '" data-k="' + r[0] + '">' + r[3].map(o => '<option value="' + o[0] + '">' + o[1] + '</option>').join('') + '</select>';
+    else if (r[2] === 'num') f += '<input type="number" inputmode="numeric" min="0" id="' + id + '" data-k="' + r[0] + '">';
+    else f += '<input type="checkbox" id="' + id + '" data-k="' + r[0] + '" style="width:24px;height:24px;justify-self:start">';
+  });
+  f += '</div>';
+  return '<div class="sheet"><div class="in"><h3>게임 설정</h3><div class="sub small" style="text-align:center">시간은 초, 거리는 미터 단위예요</div>' + f + '<div class="row"><button class="mid" data-act="settingsClose" style="flex:1">취소</button><button class="big blue" data-act="settingsSave" style="flex:2">저장</button></div></div></div>';
+}
+function fillSettings(){
+  const s = S(); C.settingsFilled = true;
+  document.querySelectorAll('[data-k]').forEach(el => { const k = el.dataset.k; if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; });
+}
+function readSettings(){
+  const o = {};
+  document.querySelectorAll('[data-k]').forEach(el => { const k = el.dataset.k; o[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? +el.value : el.value; });
+  return o;
+}
+
+// ===================== 경기장 편집 (방장) =====================
+B.editor = () => {
+  const st = C.st;
+  C.editor = { area: st.area.slice(), jails: st.jails.slice(), tool: st.area.length >= 3 ? null : 'draw', drawing: null };
+  $('#app').innerHTML =
+    '<div class="scr"><div class="full" id="emap"></div>' +
+    '<div class="etop card"><b id="eTitle"></b><div class="sub small" id="eHint"></div></div>' +
+    '<button class="locbtn" data-act="eLoc" aria-label="내 위치로" style="bottom:calc(env(safe-area-inset-bottom) + 170px)">' + locIcon() + '</button>' +
+    '<div class="ebottom"><div class="row" id="eTools"></div><div class="row"><button class="mid" data-act="eCancel" style="flex:1">취소</button><button class="big blue" data-act="eSave" style="flex:2">저장</button></div></div></div>';
+  const m = makeMap($('#emap'), true); maps.push(m); C.emap = m;
+  m.fitBounds(areaBounds(), { paddingTopLeft:[16,100], paddingBottomRight:[16,170] });
+  const el = $('#emap');
+  el.addEventListener('pointerdown', e => {
+    if (!C.editor || C.editor.tool !== 'draw') return;
+    e.preventDefault(); el.setPointerCapture(e.pointerId);
+    C.editor.drawing = [m.mouseEventToLatLng(e)]; C.editor.lastPt = [e.clientX, e.clientY]; U.editor();
+  });
+  el.addEventListener('pointermove', e => {
+    const ed = C.editor; if (!ed || !ed.drawing) return;
+    if (Math.hypot(e.clientX - ed.lastPt[0], e.clientY - ed.lastPt[1]) < 6) return;
+    ed.lastPt = [e.clientX, e.clientY]; ed.drawing.push(m.mouseEventToLatLng(e)); U.editor();
+  });
+  const end = () => {
+    const ed = C.editor; if (!ed || !ed.drawing) return;
+    if (ed.drawing.length >= 3) {
+      let pts = ed.drawing.map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6)]);
+      while (pts.length > 300) pts = pts.filter((_, i) => i % 2 === 0);
+      ed.area = pts; ed.tool = null;
+    }
+    ed.drawing = null; U.editor();
+  };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  m.on('click', e => {
+    const ed = C.editor; if (!ed || ed.tool !== 'jail') return;
+    const r = S().jailRadius;
+    const hit = ed.jails.findIndex(j => m.distance(j, e.latlng) <= Math.max(10, r));
+    if (hit >= 0) ed.jails.splice(hit, 1);
+    else if (ed.jails.length < 5) ed.jails.push([+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)]);
+    else toast('감옥은 최대 5개예요');
+    U.editor();
+  });
+};
+U.editor = () => {
+  const ed = C.editor, s = S(), m = C.emap; if (!ed || !m) return;
+  const cops = s.mode === 'cops';
+  $('#eTitle').textContent = ed.tool === 'draw' ? '경기장 그리기' : ed.tool === 'jail' ? '감옥 놓기 (' + ed.jails.length + '/5)' : '경기장' + (cops ? '·감옥' : '') + ' 편집';
+  $('#eHint').textContent = ed.tool === 'draw' ? '지도 위를 손가락으로 끌어서 경기장 테두리를 그려요. 손을 떼면 완성돼요.' :
+    ed.tool === 'jail' ? '빈 곳을 누르면 감옥이 생기고, 감옥을 누르면 지워져요. 반경 ' + s.jailRadius + 'm' :
+    '아래 버튼으로 경기장을 다시 그리거나' + (cops ? ' 감옥을 놓을 수 있어요.' : ' 지도를 움직여 확인하세요.');
+  if (ed.tool === 'draw') m.dragging.disable(); else m.dragging.enable();
+  setHTML($('#eTools'), '<button class="chipbtn' + (ed.tool === 'draw' ? ' on' : '') + '" data-act="eDraw" style="flex:1">' + (ed.area.length >= 3 ? '다시 그리기' : '경기장 그리기') + '</button>' +
+    (cops ? '<button class="chipbtn' + (ed.tool === 'jail' ? ' on' : '') + '" data-act="eJail" style="flex:1">감옥 놓기</button>' : ''));
+  const lay = m._lay; lay.clearLayers();
+  drawArea(lay, ed.area, ed.jails, s.jailRadius, cops);
+  if (ed.drawing && ed.drawing.length > 1) L.polyline(ed.drawing, { color:'#15171A', weight:3, interactive:false }).addTo(lay);
+  drawTokens(lay, C.st.tokens);
+};
+function locIcon(){ return '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="#1F6FEB"/><circle cx="12" cy="12" r="8" fill="none" stroke="#15171A" stroke-width="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="#15171A" stroke-width="2" stroke-linecap="round"/></svg>'; }
+
+// ===================== 게임 =====================
+B.game = () => {
+  $('#app').innerHTML =
+    '<div class="scr"><div class="full" id="gmap"></div>' +
+    '<div class="topbar" id="gTop"></div><div id="gBanner"></div>' +
+    '<button class="locbtn" data-act="center" aria-label="내 위치로">' + locIcon() + '</button>' +
+    '<div class="bottom" id="gBottom"></div><div id="gOv"></div></div>';
+  const m = makeMap($('#gmap'), true); maps.push(m); C.gmap = m;
+  m.fitBounds(areaBounds(), { paddingTopLeft:[16,110], paddingBottomRight:[16,200] });
+  C.gVer = -1;
+  keepAwake();
+};
+U.game = () => {
+  const st = C.st, s = st.settings, m = me(), now = serverNow();
+  const hiding = st.phase === 'hiding';
+  const left = hiding ? (st.hideEndsAt - now) / 1000 : (st.endsAt - now) / 1000;
+  if (C.gVer !== C.stVer) {
+    C.gVer = C.stVer;
+    const lay = C.gmap._lay; lay.clearLayers();
+    drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops');
+    st.players.forEach(p => {}); // 위치는 tokens로만 받아요
+    drawTokens(lay, st.tokens);
+  }
+  const roleName = m.role === 'chaser' ? cw() : rw();
+  const rc = m.state === 'out' ? 'r-out' : m.role === 'chaser' ? 'r-chaser' : 'r-runner';
+  setHTML($('#gTop'), '<div class="t"><small>' + (hiding ? '숨는 시간' : '남은 시간') + '</small><b>' + fmt(left) + '</b></div><span class="rolechip ' + rc + '">' + (m.state === 'out' ? '관전' : roleName) + '</span>' +
+    '<span style="flex:1;text-align:right;font-size:13px;color:#3A404A">남은 ' + rw() + ' ' + st.alive + '명</span>' +
+    (s.photoOn && st.canViewPhotos ? '<button class="chipbtn" data-act="album" style="min-height:40px;padding:0 10px">사진 ' + st.album.length + '</button>' : ''));
+  let bn = '';
+  if (m.publicByPhoto) bn = '<div class="banner" style="background:#FFE3E3;color:#A51D1D">사진을 안 보내서 내 위치가 모두에게 보여요</div>';
+  else if (m.state === 'out') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">' + esc(m.outReason || '아웃') + ' · 관전 중이라 모두의 위치가 보여요</div>';
+  else if (m.state === 'jailed') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">감옥 ' + m.jailIndex + '에 갇혔어요 · 회색 원 안에 있어야 해요</div>';
+  else if (!m.hasPos || C.geoErr) bn = '<div class="banner" style="background:#FFF3BF;color:#5C4400">' + esc(C.geoErr || '내 위치를 찾는 중이에요…') + '</div>';
+  setHTML($('#gBanner'), bn);
+
+  let b = '';
+  if (hiding) b = m.role === 'chaser' ? '<div class="hint">숨는 시간이 끝나면 출발해요</div><div class="big gray">기다리는 중</div>' : '<div class="hint">' + cw() + '가 출발하기 전에 숨으세요</div><div class="big gray">숨는 중</div>';
+  else if (m.state === 'out') b = '<div class="hint">모두의 위치를 볼 수 있어요</div><div class="big gray">아웃 · 관전 중</div>';
+  else if (m.role === 'chaser') {
+    if (st.reports.length) b = '<div class="hint">잡혔다는 신고가 왔어요</div>' + st.reports.map(r => '<div class="report"><span>' + esc(r.name) + ' <small class="sub" style="font-weight:500">· ' + (isFinite(r.dist) ? r.dist + 'm' : '?') + '</small></span><button class="no" data-act="deny" data-rid="' + r.id + '">아니에요</button><button class="ok" data-act="confirm" data-rid="' + r.id + '">확인</button></div>').join('');
+    else b = '<div class="hint">잡힌 사람이 신고하면 여기서 확인해요</div><div class="big gray">신고 기다리는 중</div>';
+  } else if (m.state === 'pending') b = '<div class="hint">' + cw() + '가 확인하면 처리돼요</div><div class="big gray">확인 기다리는 중…</div><button class="mid" data-act="cancel">신고 취소</button>';
+  else if (m.state === 'jailed') b = '<div class="hint">동료 도둑이 감옥에서 구출 버튼을 누르면 풀려나요</div><div class="big gray">수감 중</div>';
+  else {
+    if (m.rescue) {
+      const pr = Math.round(m.rescue.progress * 100);
+      b = '<div class="hint">감옥에 ' + m.rescue.inmates + '명 갇혀 있어요 · 버튼을 ' + s.rescueHold + '초 동안 꾹 누르세요</div><div class="progress"><i style="width:' + pr + '%"></i></div>' +
+          '<button class="big blue" data-hold="rescue" style="touch-action:none">' + (pr > 0 ? '구출 중… 손 떼지 마세요' : '구출하기 (꾹 누르기)') + '</button>' +
+          (m.canReport ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
+    } else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
+    else b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 오면 누를 수 있어요</div><div class="big gray"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#5B6270" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#5B6270" stroke-width="2"/></svg>근처에 ' + cw() + '가 없어요</div>';
+  }
+  setHTML($('#gBottom'), b);
+
+  // 오버레이
+  let ov = '';
+  if (hiding && m.role === 'chaser') ov += '<div class="ov dark"><h2>눈 감고 기다려요</h2><div class="count">' + fmt(left) + '</div><p>' + rw() + '들이 숨는 중이에요</p></div>';
+  if (!hiding && m.freezeLeft > 0) ov += '<div class="ov dark"><h2>' + cw() + '가 됐어요!</h2><div class="count">' + fmt(m.freezeLeft) + '</div><p>카운트다운이 끝나면 출발해요</p></div>';
+  if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>정말 잡혔나요?</h3><div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
+  else C.askReport = false;
+  if (m.photoLeft != null) ov += '<div class="sheet"><div class="in"><h3>사진 보낼 시간이에요</h3><div style="font-size:48px;font-weight:900;color:var(--blue);text-align:center;font-variant-numeric:tabular-nums">' + fmt(m.photoLeft) + '</div><div class="sub" style="text-align:center">시간 안에 안 보내면 내 위치가 계속 공개돼요</div><button class="big blue" data-act="photo" id="photoBtn">' + (C.sending ? '보내는 중…' : '사진 찍어서 보내기') + '</button></div></div>';
+  else if (m.publicByPhoto && m.state !== 'out') ov += '<div style="position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 160px);z-index:650;max-width:448px;margin:0 auto"><button class="mid" data-act="photo">' + (C.sending ? '보내는 중…' : '지금이라도 사진 보내기') + '</button></div>';
+  if (C.albumOpen) ov += albumSheet(st.album);
+  const warnLeft = m.outsideLeft != null ? m.outsideLeft : m.jailOutLeft;
+  if (warnLeft != null && m.state !== 'out') {
+    const jail = m.outsideLeft == null;
+    ov += '<div class="ov red"><svg width="72" height="72" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3L2 21h20L12 3z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>' +
+      '<h2>' + (jail ? '감옥 밖이에요' : '경기장 밖이에요') + '</h2><p>지금 ' + (jail ? '감옥으' : '안으') + '로 돌아오세요</p><div class="count">' + fmt(warnLeft) + '</div><p style="font-size:16px">0초가 되면 탈락해요</p><span class="pill">' + (C.sound ? '경고음 켜짐' : '경고음 꺼짐') + '</span></div>';
+  }
+  setHTML($('#gOv'), ov);
+};
+function albumSheet(album){
+  const items = album.slice().reverse().map(a => {
+    if (!C.photos[a.id] && !C.photoAsked[a.id]) { C.photoAsked[a.id] = 1; send({ type:'photoGet', id:a.id }); }
+    return '<figure>' + (C.photos[a.id] ? '<img src="' + C.photos[a.id] + '" alt="' + esc(a.from) + '님이 보낸 사진">' : '') + '<figcaption>' + esc(a.from) + ' · ' + fmt(a.at) + ' 남았을 때</figcaption></figure>';
+  }).join('');
+  return '<div class="sheet"><div class="in"><h3>사진 ' + album.length + '장</h3>' + (album.length ? '<div class="album">' + items + '</div>' : '<div class="sub" style="text-align:center">아직 받은 사진이 없어요</div>') + '<button class="big dark" data-act="albumClose">닫기</button></div></div>';
+}
+
+// 사진 압축 (약 200KB)
+$('#photoInput').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  C.sending = true; render();
+  try {
+    const url = URL.createObjectURL(f);
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let w = img.naturalWidth, h = img.naturalHeight, max = 1280;
+    let data = '';
+    for (let tries = 0; tries < 6; tries++) {
+      const k = Math.min(1, max / Math.max(w, h));
+      const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      data = cv.toDataURL('image/jpeg', 0.72);
+      if (data.length < 270000) break;
+      max = Math.round(max * 0.8);
+    }
+    URL.revokeObjectURL(url);
+    send({ type:'photo', data });
+  } catch(err) { toast('사진을 읽지 못했어요. 다시 찍어 주세요'); }
+  C.sending = false; render();
+});
+
+// ===================== 결과 =====================
+B.result = () => {
+  $('#app').innerHTML =
+  '<div class="scr"><div class="pad">' +
+    '<div id="rHead" style="text-align:center;padding-top:20px"></div>' +
+    '<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>이동 경로 다시보기</b><button class="chipbtn" data-act="replay">재생</button></div><div id="rmap" style="height:300px;border-radius:12px;overflow:hidden"></div>' +
+    '<div class="legend" style="margin-top:8px"><span><i style="background:#E8590C"></i>' + cw() + ' 팀</span><span><i style="background:#1F6FEB"></i>' + rw() + ' 팀</span></div></div>' +
+    '<div id="rAlbum"></div><div class="card" id="rList"></div>' +
+    '<div class="sub small" style="text-align:center">방을 나가거나 다음 판을 시작하면 위치 기록과 사진이 모두 삭제돼요</div>' +
+    '<div id="rActions" style="display:flex;flex-direction:column;gap:10px"></div>' +
+  '</div></div>';
+  const m = makeMap($('#rmap'), true); maps.push(m); C.rmap = m;
+  m.fitBounds(areaBounds(), { padding:[12,12] });
+  drawTrails(1);
+};
+function drawTrails(frac){
+  const st = C.st, lay = C.rmap._lay; lay.clearLayers();
+  drawArea(lay, st.area, st.jails, st.settings.jailRadius, st.settings.mode === 'cops');
+  (st.trails || []).forEach(t => {
+    const n = Math.max(1, Math.round(t.pts.length * frac)), pts = t.pts.slice(0, n);
+    if (pts.length > 1) L.polyline(pts, { color:t.role === 'chaser' ? '#E8590C' : '#1F6FEB', weight:4, opacity:.85, interactive:false }).addTo(lay);
+    if (pts.length) L.marker(pts[pts.length-1], { icon:L.divIcon({ className:'', html:'<div class="tk" style="--c:' + (t.role === 'chaser' ? '#E8590C' : '#1F6FEB') + '"><i></i><span>' + esc(t.name) + '</span></div>', iconSize:[0,0] }), interactive:false }).addTo(lay);
+  });
+}
+U.result = () => {
+  const st = C.st, m = me(), win = st.winner;
+  setHTML($('#rHead'), '<div class="sub">게임 끝</div><h1 style="font-size:34px;color:' + (win === 'chaser' ? 'var(--orange-ink)' : 'var(--blue-ink)') + '">' + (win === 'chaser' ? cw() : rw()) + ' 팀 승리</h1><div style="margin-top:4px">' + esc(st.winReason) + '</div><div class="sub" style="margin-top:4px">' + (m.role === win ? '내가 이긴 팀이에요!' : '다음 판엔 이겨봐요') + '</div>');
+  setHTML($('#rAlbum'), st.album.length ? '<div class="card"><b>사진 앨범</b><div class="album" style="margin-top:8px">' + st.album.map(a => {
+    if (!C.photos[a.id] && !C.photoAsked[a.id]) { C.photoAsked[a.id] = 1; send({ type:'photoGet', id:a.id }); }
+    return '<figure>' + (C.photos[a.id] ? '<img src="' + C.photos[a.id] + '" alt="' + esc(a.from) + '님이 보낸 사진">' : '') + '<figcaption>' + esc(a.from) + '</figcaption></figure>';
+  }).join('') + '</div></div>' : '');
+  setHTML($('#rList'), '<b>최종 상태</b>' + st.players.map(p => '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #EEF0F3"><span>' + esc(p.name) + '</span><span class="sub">' + (p.role === 'chaser' ? cw() : rw()) + ' · ' + (p.state === 'out' ? '아웃' : p.state === 'jailed' ? '수감' : '생존') + '</span></div>').join(''));
+  setHTML($('#rActions'), (m.host ? '<button class="big blue" data-act="toLobby">대기실로 (한 판 더)</button>' : '<div class="big gray" style="font-size:16px;font-weight:500">방장이 대기실로 돌아가길 기다리는 중…</div>') + '<button class="mid" data-act="leave">방 나가기</button>');
+};
+
+// ===================== 버튼 처리 =====================
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const act = a.dataset.act, m = me();
+  switch (act) {
+    case 'leave': if (confirmLeave()) { send({ type:'leave' }); setTimeout(() => leaveRoom(false), 150); } break;
+    case 'share': {
+      const url = location.origin + '/?room=' + C.st.code;
+      if (navigator.share) navigator.share({ title:'글로벌 술래잡기', text:'방 코드 ' + C.st.code + ' 로 들어와!', url }).catch(() => {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('초대 링크를 복사했어요'));
+      break;
+    }
+    case 'bigmap': C.bigMap = true; C.bigMapObj = null; render(); break;
+    case 'bigmapClose': C.bigMap = false; if (C.bigMapObj) { maps = maps.filter(x => x !== C.bigMapObj); C.bigMapObj.remove(); C.bigMapObj = null; } render(); break;
+    case 'sound': C.sound = !C.sound; ls('gt_sound', C.sound ? '1' : '0'); render(); break;
+    case 'soundtest': unlockAudio(); beep(); buzz(200); break;
+    case 'wish': send({ type:'wish', on:!m.wish }); break;
+    case 'settings': C.settingsOpen = true; C.settingsFilled = false; render(); break;
+    case 'settingsClose': C.settingsOpen = false; render(); break;
+    case 'settingsSave': send({ type:'settings', settings:readSettings() }); C.settingsOpen = false; toast('설정을 저장했어요'); render(); break;
+    case 'editor': C.editor = {}; render(); break;
+    case 'eDraw': C.editor.tool = C.editor.tool === 'draw' ? null : 'draw'; U.editor(); break;
+    case 'eJail': C.editor.tool = C.editor.tool === 'jail' ? null : 'jail'; U.editor(); break;
+    case 'eLoc': if (C.pos) C.emap.setView([C.pos.lat, C.pos.lng], 17); else toast('내 위치를 아직 못 찾았어요'); break;
+    case 'eCancel': C.editor = null; render(); break;
+    case 'eSave': {
+      const ed = C.editor;
+      if (ed.area.length < 3) { toast('경기장을 먼저 그려 주세요'); break; }
+      send({ type:'area', pts:ed.area }); send({ type:'jails', list:ed.jails });
+      C.editor = null; toast('경기장을 저장했어요'); render(); break;
+    }
+    case 'start': unlockAudio(); send({ type:'start' }); break;
+    case 'center': if (C.pos) C.gmap.setView([C.pos.lat, C.pos.lng], Math.max(C.gmap.getZoom(), 17)); else toast('내 위치를 아직 못 찾았어요'); break;
+    case 'report': C.askReport = true; render(); break;
+    case 'reportNo': C.askReport = false; render(); break;
+    case 'reportYes': C.askReport = false; send({ type:'report' }); render(); break;
+    case 'cancel': send({ type:'cancel' }); break;
+    case 'confirm': send({ type:'confirm', rid:a.dataset.rid }); break;
+    case 'deny': send({ type:'deny', rid:a.dataset.rid }); break;
+    case 'photo': if (!C.sending) $('#photoInput').click(); break;
+    case 'album': C.albumOpen = true; render(); break;
+    case 'albumClose': C.albumOpen = false; render(); break;
+    case 'toLobby': send({ type:'toLobby' }); break;
+    case 'replay': {
+      let f = 0; clearInterval(C.replayT);
+      C.replayT = setInterval(() => { f += 0.01; if (!C.rmap || C.screen !== 'result') { clearInterval(C.replayT); return; } drawTrails(Math.min(1, f)); if (f >= 1) clearInterval(C.replayT); }, 80);
+      break;
+    }
+  }
+});
+function confirmLeave(){
+  if (C.st && (C.st.phase === 'playing' || C.st.phase === 'hiding')) {
+    if (C.leaveArmed && Date.now() - C.leaveArmed < 3000) { C.leaveArmed = 0; return true; }
+    C.leaveArmed = Date.now(); toast('게임 중이에요. 정말 나가려면 한 번 더 누르세요'); return false;
+  }
+  return true;
+}
+// 구출 버튼: 누르고 있는 동안만
+document.addEventListener('pointerdown', e => { if (e.target.closest('[data-hold="rescue"]')) { e.preventDefault(); C.holding = true; send({ type:'rescue', on:true }); } });
+const stopHold = () => { if (C.holding) { C.holding = false; send({ type:'rescue', on:false }); } };
+document.addEventListener('pointerup', stopHold); document.addEventListener('pointercancel', stopHold);
+
+// ===================== 경고음 반복 =====================
+let lastPhotoAlert = false;
+setInterval(() => {
+  const m = me(); if (!m || !C.st) return;
+  const inGame = C.st.phase === 'playing';
+  if (inGame && m.state !== 'out' && (m.outsideLeft != null || m.jailOutLeft != null)) { if (C.sound) beep(); buzz(300); }
+  const ph = m.photoLeft != null;
+  if (ph && !lastPhotoAlert) { if (C.sound) beep(660); buzz([200,100,200]); }
+  lastPhotoAlert = ph;
+}, 1000);
+
+// ===================== 시작 =====================
+if (!window.L) { document.body.innerHTML = '<div style="padding:40px 20px;font-family:sans-serif">지도 기능을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.</div>'; return; }
+if (C.code && C.name) connect();
+else if (C.code && !C.name) C.code = null;
+render();
+})();
+</script>
+</body>
+</html>
