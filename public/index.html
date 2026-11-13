@@ -201,16 +201,55 @@ function leaveRoom(silent){
 setInterval(() => send({ type:'ping' }), 20000);
 
 // ===================== 위치 =====================
+function onGeo(p){
+  C.pos = { lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy) };
+  C.geoErr = null; C.geoCode = 0; C.geoAsking = false; sendPos(false); render();
+}
+function onGeoErr(err){
+  C.geoCode = err.code; C.geoAsking = false;
+  C.geoErr = err.code === 1 ? '위치 권한이 꺼져 있어요' : err.code === 2 ? '휴대폰 위치(GPS)가 꺼져 있거나 위치를 못 찾고 있어요' : '위치를 아직 못 잡았어요. 하늘이 보이는 곳으로 가 보세요';
+  render();
+}
 function startGeo(){
   if (C.geoWatch != null) return;
-  if (!navigator.geolocation) { C.geoErr = '이 브라우저는 위치 기능을 지원하지 않아요'; render(); return; }
-  C.geoWatch = navigator.geolocation.watchPosition(p => {
-    C.pos = { lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy) };
-    C.geoErr = null; sendPos(false);
-  }, err => {
-    C.geoErr = err.code === 1 ? '위치 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 위치 권한을 허용해 주세요.' : '위치를 아직 못 잡았어요. 하늘이 보이는 곳으로 가 보세요.';
-    render();
-  }, { enableHighAccuracy:true, maximumAge:1000, timeout:20000 });
+  if (!navigator.geolocation) { C.geoErr = '이 브라우저는 위치 기능을 지원하지 않아요'; C.geoCode = 9; render(); return; }
+  C.geoWatch = navigator.geolocation.watchPosition(onGeo, onGeoErr, { enableHighAccuracy:true, maximumAge:1000, timeout:20000 });
+}
+// "위치 권한 허용하기" 버튼: 다시 물어보고, 위치 감시를 새로 시작해요
+function askGeo(){
+  if (!navigator.geolocation) return;
+  C.geoAsking = true; render();
+  if (C.geoWatch != null) { try { navigator.geolocation.clearWatch(C.geoWatch); } catch(e){} C.geoWatch = null; }
+  navigator.geolocation.getCurrentPosition(p => { onGeo(p); startGeo(); }, err => { onGeoErr(err); startGeo(); }, { enableHighAccuracy:true, maximumAge:0, timeout:20000 });
+}
+// 브라우저 설정에서 권한을 바꾸고 돌아오면 바로 알아채요
+if (navigator.permissions && navigator.permissions.query) {
+  navigator.permissions.query({ name:'geolocation' }).then(ps => {
+    C.permState = ps.state;
+    ps.onchange = () => { C.permState = ps.state; if (ps.state === 'granted') askGeo(); else render(); };
+  }).catch(() => {});
+}
+function geoGuide(){
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua), samsung = /SamsungBrowser/.test(ua), android = /Android/.test(ua), iosChrome = ios && /CriOS/.test(ua);
+  if (C.geoCode === 2) return ['휴대폰 위에서 아래로 내려 빠른 설정을 열어요', '<b>위치</b>(GPS)를 켜요', '아래 <b>다시 확인</b>을 눌러요'];
+  if (iosChrome) return ['아이폰 <b>설정 앱</b> → <b>Chrome</b> → <b>위치</b>', '<b>앱을 사용하는 동안</b>으로 바꾸고 <b>정확한 위치</b>를 켜요', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
+  if (ios) return ['주소창 왼쪽 <b>가가</b>(ᴀA) 버튼 → <b>웹 사이트 설정</b>', '<b>위치</b>를 <b>허용</b>으로 바꿔요', '안 되면: <b>설정 앱</b> → <b>개인정보 보호 및 보안</b> → <b>위치 서비스</b> → <b>Safari 웹 사이트</b> → <b>앱을 사용하는 동안</b>', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
+  if (samsung) return ['주소창의 <b>자물쇠</b> 아이콘을 눌러요', '<b>권한</b> → <b>위치</b>를 <b>허용</b>으로 바꿔요', '안 되면: 메뉴(≡) → <b>설정</b> → <b>사이트 및 다운로드</b> → <b>사이트 권한</b> → <b>위치</b>', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
+  if (android) return ['주소창 왼쪽 아이콘(자물쇠·설정 모양)을 눌러요', '<b>권한</b> → <b>위치</b>를 <b>허용</b>으로 바꿔요', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
+  return ['주소창 왼쪽 자물쇠 아이콘을 눌러요', '<b>위치</b>를 <b>허용</b>으로 바꿔요', '<b>새로고침</b>을 눌러요'];
+}
+function geoCard(){
+  if (C.pos && !C.geoErr) return '';
+  const denied = C.geoCode === 1 || C.permState === 'denied', off = C.geoCode === 2;
+  const icon = '<svg width="44" height="44" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" fill="none" stroke="#1F6FEB" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="#1F6FEB"/></svg>';
+  if (!denied && !off) return '<div class="card" style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;border:2px solid var(--blue)">' + icon +
+    '<div style="font-size:19px;font-weight:900">위치를 켜야 게임에 참가할 수 있어요</div><div class="sub">버튼을 누르고 뜨는 창에서 <b>허용</b>을 눌러 주세요</div>' +
+    '<button class="big blue" data-act="geoAsk">' + (C.geoAsking ? '위치 찾는 중…' : '위치 권한 허용하기') + '</button></div>';
+  return '<div class="card" style="display:flex;flex-direction:column;gap:12px;border:2px solid var(--red)"><div class="row">' + icon.replace(/#1F6FEB/g, '#C92A2A') +
+    '<div><div style="font-size:19px;font-weight:900">' + (off ? '휴대폰 위치가 꺼져 있어요' : '위치 권한이 막혀 있어요') + '</div><div class="sub small">' + (off ? '위치를 켜야 게임에 참가할 수 있어요' : '한 번 거절하면 브라우저가 다시 묻지 않아서 직접 켜야 해요') + '</div></div></div>' +
+    '<ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:15px">' + geoGuide().map(t => '<li>' + t + '</li>').join('') + '</ol>' +
+    '<div class="row"><button class="mid" data-act="geoAsk" style="flex:1">' + (C.geoAsking ? '확인 중…' : '다시 확인') + '</button><button class="big blue" data-act="reload" style="flex:1;min-height:52px;font-size:17px">새로고침</button></div></div>';
 }
 function sendPos(force){
   const now = Date.now();
@@ -339,9 +378,9 @@ B.lobby = () => {
   $('#app').innerHTML =
   '<div class="scr"><div class="pad">' +
     '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
+    '<div id="lGeo"></div>' +
     '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div class="sub small">모드</div><div id="lMode" style="font-weight:700"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
     '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
-    '<div id="lGeo"></div>' +
     '<div class="row" style="justify-content:space-between;padding:2px 4px 0"><b id="lCount"></b><span class="sub small">지망자 중에서 랜덤으로 뽑아요</span></div>' +
     '<div class="list" id="lList"></div>' +
     '<div class="card row" style="padding:10px 10px 10px 16px"><div style="flex:1"><div style="font-weight:700">내 경고음</div><div class="sub small">경기장 밖으로 나가면 소리로 알려줘요</div></div><button class="chipbtn" data-act="soundtest">소리 테스트</button><button class="tg" id="lSound" data-act="sound" aria-label="경고음 켜기/끄기"><span></span></button></div>' +
@@ -357,10 +396,8 @@ U.lobby = () => {
   $('#lAreaTag').textContent = st.area.length >= 3 ? ('경기장' + (s.mode === 'cops' ? ' · 감옥 ' + st.jails.length + '개' : '')) : '경기장을 아직 안 그렸어요';
   const lay = C.lmap._lay; lay.clearLayers(); drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay, st.tokens);
   const ak = JSON.stringify(st.area); if (ak !== C.lmapArea && st.area.length >= 3) { C.lmapArea = ak; C.lmap.fitBounds(areaBounds(), { padding:[16,16] }); }
-  let geo = '';
-  if (C.geoErr) geo = '<div class="warnbox">' + esc(C.geoErr) + '</div>';
-  else if (!C.pos) geo = '<div class="warnbox">내 위치를 찾는 중이에요… 위치 권한 창이 뜨면 허용을 눌러 주세요.</div>';
-  else if (C.pos.acc > 50) geo = '<div class="warnbox">위치 정확도가 낮아요 (오차 약 ' + C.pos.acc + 'm). 밖으로 나가면 좋아져요.</div>';
+  let geo = geoCard();
+  if (!geo && C.pos.acc > 50) geo = '<div class="warnbox">위치 정확도가 낮아요 (오차 약 ' + C.pos.acc + 'm). 밖으로 나가면 좋아져요.</div>';
   setHTML($('#lGeo'), geo);
   $('#lCount').textContent = '참가자 ' + st.players.length + '명';
   setHTML($('#lList'), st.players.map(p =>
@@ -371,7 +408,9 @@ U.lobby = () => {
   let act = '<button class="mid' + (m.wish ? ' wish' : '') + '" data-act="wish">' + cw() + (m.wish ? ' 지망 취소' : ' 지망하기') + '</button>';
   if (m.host) {
     act += '<div class="row"><button class="mid" data-act="settings" style="flex:1">게임 설정</button><button class="mid" data-act="editor" style="flex:1">경기장' + (s.mode === 'cops' ? '·감옥' : '') + ' 편집</button></div>';
-    act += '<button class="big blue" data-act="start">게임 시작</button>';
+    const noPos = st.players.filter(p => !p.hasPos);
+    if (noPos.length) act += '<div class="big gray" style="flex-direction:column;gap:2px;padding:10px 16px;font-size:16px"><span>위치를 켜야 시작할 수 있어요</span><span class="small" style="font-weight:500">위치 꺼짐: ' + noPos.map(p => esc(p.name)).join(', ') + '</span></div>';
+    else act += '<button class="big blue" data-act="start">게임 시작</button>';
   } else act += '<div class="big gray" style="font-weight:500;font-size:16px">방장이 시작하길 기다리는 중…</div>';
   setHTML($('#lActions'), act);
   setHTML($('#lOv'), (C.settingsOpen && m.host ? settingsSheet() : '') + (C.bigMap ? '<div class="sheet" style="background:#E6EBEF;justify-content:stretch"><div id="bigmap" style="position:absolute;inset:0"></div><div class="etop card"><b>' + ($('#lAreaTag').textContent) + '</b><div class="sub small">파란 점선 안에서만 움직여요' + (s.mode === 'cops' ? ' · 회색 원이 감옥이에요' : '') + '</div></div><div class="ebottom"><button class="big blue" data-act="bigmapClose">확인했어요</button></div></div>' : ''));
@@ -549,7 +588,8 @@ U.game = () => {
   if (m.publicByPhoto) bn = '<div class="banner" style="background:#FFE3E3;color:#A51D1D">사진을 안 보내서 내 위치가 모두에게 보여요</div>';
   else if (m.state === 'out') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">' + esc(m.outReason || '아웃') + ' · 관전 중이라 모두의 위치가 보여요</div>';
   else if (m.state === 'jailed') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">감옥 ' + m.jailIndex + '에 갇혔어요 · 회색 원 안에 있어야 해요</div>';
-  else if (!m.hasPos || C.geoErr) bn = '<div class="banner" style="background:#FFF3BF;color:#5C4400">' + esc(C.geoErr || '내 위치를 찾는 중이에요…') + '</div>';
+  else if (!m.hasPos || C.geoErr) bn = '<div class="banner" style="background:#FFF3BF;color:#5C4400;display:flex;align-items:center;gap:8px;justify-content:center"><span>' + esc(C.geoErr || '내 위치를 찾는 중이에요…') + '</span>' + (C.geoErr ? '<button class="chipbtn" data-act="geoHelp" style="min-height:36px">해결하기</button>' : '') + '</div>';
+  if (C.geoHelp && C.geoErr) bn += '<div class="sheet" style="z-index:980"><div class="in">' + geoCard() + '<button class="mid" data-act="geoHelpClose">닫기</button></div></div>';
   setHTML($('#gBanner'), bn);
 
   let b = '';
@@ -670,6 +710,10 @@ document.addEventListener('click', e => {
     case 'bigmap': C.bigMap = true; C.bigMapObj = null; render(); break;
     case 'bigmapClose': C.bigMap = false; if (C.bigMapObj) { maps = maps.filter(x => x !== C.bigMapObj); C.bigMapObj.remove(); C.bigMapObj = null; } render(); break;
     case 'sound': C.sound = !C.sound; ls('gt_sound', C.sound ? '1' : '0'); render(); break;
+    case 'geoAsk': askGeo(); break;
+    case 'reload': location.reload(); break;
+    case 'geoHelp': C.geoHelp = true; render(); break;
+    case 'geoHelpClose': C.geoHelp = false; render(); break;
     case 'soundtest': unlockAudio(); beep(); buzz(200); break;
     case 'wish': send({ type:'wish', on:!m.wish }); break;
     case 'settings': C.settingsOpen = true; C.settingsFilled = false; render(); break;

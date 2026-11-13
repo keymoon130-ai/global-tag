@@ -276,6 +276,8 @@ export class Room extends DurableObject {
     const g = this.g, S = g.settings;
     if (g.players.length < 2) { this.toast(host, '2명 이상 모여야 시작할 수 있어요'); return; }
     if (g.area.length < 3) { this.toast(host, '먼저 경기장을 그려 주세요'); return; }
+    const noPos = g.players.filter(p => p.lat == null);
+    if (noPos.length) { this.toast(host, '위치가 꺼진 사람이 있어서 시작할 수 없어요: ' + noPos.map(p => p.name).join(', ')); return; }
     const n = Math.min(Math.max(1, S.chaserCount), g.players.length - 1);
     const wishers = shuffle(g.players.filter(p => p.wish));
     const others = shuffle(g.players.filter(p => !p.wish));
