@@ -1,0 +1,15 @@
+{
+  "name": "글로벌 술래잡기",
+  "short_name": "술래잡기",
+  "description": "친구들과 진짜 위치로 하는 술래잡기",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F6F7F9",
+  "theme_color": "#F6F7F9",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

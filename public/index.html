@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F6F7F9">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="술래잡기">
 <title>글로벌 술래잡기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -192,7 +197,7 @@ function connect(){
   try { if (C.ws) C.ws.close(); } catch(e){}
   const url = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/' + C.code + '?token=' + C.token + '&name=' + encodeURIComponent(C.name);
   const ws = new WebSocket(url); C.ws = ws;
-  ws.onopen = () => { C.open = true; C.retry = 0; if (C.pos) sendPos(true); if (document.visibilityState === 'hidden') send({ type:'away' }); render(); };
+  ws.onopen = () => { C.open = true; C.retry = 0; if (C.pos) sendPos(true); resubscribePush(); if (document.visibilityState === 'hidden') send({ type:'away' }); render(); };
   ws.onmessage = e => {
     let m; try { m = JSON.parse(e.data); } catch(err){ return; }
     if (m.type === 'state') { C.st = m; C.offset = m.now - Date.now(); C.stVer = (C.stVer || 0) + 1; render(); }
@@ -201,8 +206,9 @@ function connect(){
     else if (m.type === 'error') { C.err = m.text; leaveRoom(true); }
     else if (m.type === 'left') { leaveRoom(true); }
   };
-  ws.onclose = () => {
+  ws.onclose = e => {
     if (C.ws !== ws) return;
+    if (e.code === 4002) { C.err = '다른 화면(홈 화면 앱 등)에서 같은 이름으로 들어와서 여기는 연결을 끊었어요'; leaveRoom(true); return; }
     C.open = false;
     if (C.wantConn && C.code) { const d = Math.min(5000, 800 * Math.pow(2, C.retry++)); setTimeout(() => { if (C.wantConn && C.ws === ws) connect(); }, d); }
     render();
@@ -219,6 +225,60 @@ function leaveRoom(silent){
   render();
 }
 setInterval(() => send({ type:'ping' }), 20000);
+
+// ===================== 푸시 알림 =====================
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_STANDALONE = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const PUSH_OK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+function ub64(s){ s = s.replace(/-/g,'+').replace(/_/g,'/'); s += '='.repeat((4 - s.length % 4) % 4); const b = atob(s); return Uint8Array.from(b, c => c.charCodeAt(0)); }
+async function getSub(ask){
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && ask) {
+    const k = await (await fetch('/api/vapid')).json();
+    sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:ub64(k.pub) });
+  }
+  return sub;
+}
+async function enablePush(){
+  if (!PUSH_OK) return;
+  C.pushBusy = true; render();
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { C.pushBusy = false; render(); return; }
+    const sub = await getSub(true);
+    if (sub) { send({ type:'push', sub:sub.toJSON() }); toast('알림을 켰어요'); }
+  } catch(e) { toast('알림을 켜지 못했어요. 잠시 뒤 다시 눌러 주세요'); }
+  C.pushBusy = false; render();
+}
+async function resubscribePush(){
+  if (!PUSH_OK || Notification.permission !== 'granted') return;
+  try { const sub = await getSub(true); if (sub) send({ type:'push', sub:sub.toJSON() }); } catch(e){}
+}
+function pushCard(m){
+  if (m.push) return '<div class="card row" style="padding:10px 10px 10px 16px"><div style="flex:1"><div style="font-weight:700;color:#1F6B2A">알림 켜짐</div><div class="sub small">화면이 꺼지면 진동 알림으로 알려줘요</div></div><button class="chipbtn" data-act="pushTest">알림 테스트</button></div>';
+  const bell = '<svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2z" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linejoin="round"/><path d="M10 20a2 2 0 0 0 4 0" fill="none" stroke="#1F6FEB" stroke-width="2"/></svg>';
+  const head = (t, sub) => '<div class="row">' + bell + '<div><div style="font-size:18px;font-weight:900">' + t + '</div><div class="sub small">' + sub + '</div></div></div>';
+  if (IS_IOS && !IS_STANDALONE) {
+    const steps = [
+      '사파리 아래쪽 <b>공유 버튼</b>(네모에 위쪽 화살표)을 눌러요. 안 보이면 오른쪽 아래 <b>⋯</b> 버튼 → <b>공유</b>',
+      '목록을 내려서 <b>홈 화면에 추가</b>를 누르고, <b>웹 앱으로 열기</b>가 있으면 켜 둔 채 <b>추가</b>',
+      '홈 화면에 생긴 <b>글로벌 술래잡기</b> 아이콘으로 열어요',
+      '방 코드 <b>' + esc(C.st.code) + '</b>로 다시 들어와서 <b>알림 켜기</b>를 눌러요'
+    ];
+    return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + head('아이폰은 홈 화면에 추가해야 알림이 와요', '화면이 꺼졌을 때 알림을 받으려면 아래 순서대로 해 주세요 (iOS 16.4 이상)') +
+      (C.iosGuide ? '<ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:15px">' + steps.map(t => '<li>' + t + '</li>').join('') + '</ol><div class="sub small">홈 화면 앱은 사파리와 따로라서 한 번 더 입장해야 해요. 같은 닉네임으로 들어오면 자동으로 이어져요.</div><button class="link" data-act="iosGuide">접기</button>'
+        : '<button class="mid" data-act="iosGuide">방법 보기</button>') + '</div>';
+  }
+  if (!PUSH_OK) return '<div class="card">' + head('이 브라우저는 알림을 못 받아요', '크롬이나 삼성 인터넷으로 열면 화면이 꺼져도 알림을 받을 수 있어요') + '</div>';
+  if (Notification.permission === 'denied') return '<div class="card" style="display:flex;flex-direction:column;gap:10px">' + head('알림이 막혀 있어요', '주소창 왼쪽 아이콘 → <b>권한</b> → <b>알림</b>을 <b>허용</b>으로 바꾸고 새로고침해 주세요') + '<button class="mid" data-act="reload">새로고침</button></div>';
+  return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + head('알림 켜기 (추천)', '게임 중 화면이 꺼지면 진동 알림으로 바로 알려줘요') + '<button class="big blue" data-act="pushOn" style="min-height:54px;font-size:18px">' + (C.pushBusy ? '켜는 중…' : '알림 켜기') + '</button></div>';
+}
+function awakeCard(){
+  const sec = S() ? S().disconnectAllow : 60;
+  return '<div class="warnbox" style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:1px"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#5C4400" stroke-width="2"/><path d="M10 18h4" stroke="#5C4400" stroke-width="2" stroke-linecap="round"/></svg><div><b>게임하는 동안 화면을 켜 두세요.</b> 화면이 켜진 채로 주머니에 넣으면 돼요. 화면을 잠그면 위치가 끊기고, ' + sec + '초가 지나면 내 위치가 모두에게 공개돼요.</div></div>';
+}
 
 // ===================== 위치 =====================
 function onGeo(p){
@@ -417,6 +477,8 @@ B.lobby = () => {
     '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
     '<div id="lGeo"></div>' +
     '<div id="lCheck"></div>' +
+    '<div id="lPush"></div>' +
+    '<div id="lAwake"></div>' +
     '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div class="sub small">모드</div><div id="lMode" style="font-weight:700"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
     '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div class="row" style="justify-content:space-between;padding:2px 4px 0"><b id="lCount"></b><span class="sub small">지망자 중에서 랜덤으로 뽑아요</span></div>' +
@@ -442,6 +504,8 @@ U.lobby = () => {
     (p.host ? '<span class="chip c-host">방장</span>' : '') + (p.wish ? '<span class="chip c-wish">' + cw() + ' 지망</span>' : '') +
     (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : !p.checked ? '<span class="chip c-warn">점검 전</span>' : '<span class="chip c-ok">준비 완료</span>') + '</div>').join(''));
   setHTML($('#lCheck'), checkCard(m));
+  setHTML($('#lPush'), pushCard(m));
+  setHTML($('#lAwake'), awakeCard());
   let act = '<button class="mid' + (m.wish ? ' wish' : '') + '" data-act="wish">' + cw() + (m.wish ? ' 지망 취소' : ' 지망하기') + '</button>';
   if (m.host) {
     act += '<div class="row"><button class="mid" data-act="settings" style="flex:1">게임 설정</button><button class="mid" data-act="editor" style="flex:1">경기장' + (s.mode === 'cops' ? '·감옥' : '') + ' 편집</button></div>';
@@ -652,6 +716,11 @@ U.game = () => {
 
   // 오버레이
   let ov = '';
+  const akey = st.code + ':' + st.hideEndsAt;
+  if (C.awakeAck !== akey && m.state !== 'out') ov += '<div class="sheet" style="z-index:990"><div class="in" style="text-align:center"><svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true" style="margin:0 auto"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#1F6FEB" stroke-width="2"/><path d="M10 18h4" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round"/></svg>' +
+    '<h3>화면을 켠 채로 주머니에 넣으세요</h3><div class="sub" style="font-size:16px">화면을 잠그거나 다른 앱으로 가면 위치가 끊겨요.<br>' + s.disconnectAllow + '초가 지나면 내 위치가 모두에게 공개돼요.</div>' +
+    (m.push ? '<div class="small" style="color:#1F6B2A;font-weight:700">알림이 켜져 있어서 화면이 꺼지면 바로 알려줘요</div>' : '') +
+    '<button class="big blue" data-act="awakeOk">알겠어요</button></div></div>';
   if (hiding && m.role === 'chaser') ov += '<div class="ov dark"><h2>눈 감고 기다려요</h2><div class="count">' + fmt(left) + '</div><p>' + rw() + '들이 숨는 중이에요</p></div>';
   if (!hiding && m.freezeLeft > 0) ov += '<div class="ov dark"><h2>' + cw() + '가 됐어요!</h2><div class="count">' + fmt(m.freezeLeft) + '</div><p>카운트다운이 끝나면 출발해요</p></div>';
   if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>정말 잡혔나요?</h3><div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
@@ -750,6 +819,10 @@ document.addEventListener('click', e => {
     case 'bigmapClose': C.bigMap = false; if (C.bigMapObj) { maps = maps.filter(x => x !== C.bigMapObj); C.bigMapObj.remove(); C.bigMapObj = null; } render(); break;
     case 'sound': C.sound = !C.sound; ls('gt_sound', C.sound ? '1' : '0'); render(); break;
     case 'geoAsk': askGeo(); break;
+    case 'pushOn': enablePush(); break;
+    case 'pushTest': send({ type:'pushTest' }); toast('알림을 보냈어요. 몇 초 안에 와요'); break;
+    case 'iosGuide': C.iosGuide = !C.iosGuide; render(); break;
+    case 'awakeOk': C.awakeAck = C.st.code + ':' + C.st.hideEndsAt; keepAwake(); render(); break;
     case 'reload': location.reload(); break;
     case 'geoHelp': C.geoHelp = true; render(); break;
     case 'geoHelpClose': C.geoHelp = false; render(); break;
