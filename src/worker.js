@@ -141,7 +141,7 @@ export class Room extends DurableObject {
 
   newPlayer(token, name) {
     return {
-      id: 'p' + (++this.g.seq), token, name, host: false, role: 'runner', state: 'alive', wish: false,
+      id: 'p' + (++this.g.seq), token, name, host: false, role: 'runner', state: 'alive', wish: false, checked: false,
       lat: null, lng: null, acc: null, known: null, lastPosAt: 0, connected: true, away: false, discAt: null, publicByDisc: false,
       outsideAt: null, jailOutAt: null, jailId: null, freezeUntil: 0, photoDueAt: null, publicByPhoto: false,
       trail: [], rescueStart: null, outReason: ''
@@ -210,6 +210,7 @@ export class Room extends DurableObject {
         if (p.away) { p.away = false; p.connected = true; p.discAt = null; p.publicByDisc = false; if (g.phase === 'playing') this.toast(p, '복귀했어요 · 그대로 이어서 해요'); }
         this.changed(); return;
       case 'wish': if (g.phase === 'lobby') { p.wish = !!m.on; this.changed(); } return;
+      case 'check': p.checked = !!m.ok; this.changed(true); return;
       case 'settings': if (p.host && g.phase === 'lobby') { this.applySettings(m.settings || {}); this.changed(true); } return;
       case 'area':
         if (p.host && g.phase === 'lobby' && Array.isArray(m.pts) && m.pts.length >= 3 && m.pts.length <= 500) {
@@ -278,6 +279,8 @@ export class Room extends DurableObject {
     if (g.area.length < 3) { this.toast(host, '먼저 경기장을 그려 주세요'); return; }
     const noPos = g.players.filter(p => p.lat == null);
     if (noPos.length) { this.toast(host, '위치가 꺼진 사람이 있어서 시작할 수 없어요: ' + noPos.map(p => p.name).join(', ')); return; }
+    const noCheck = g.players.filter(p => !p.checked);
+    if (noCheck.length) { this.toast(host, '소리 점검을 안 한 사람이 있어요: ' + noCheck.map(p => p.name).join(', ')); return; }
     const n = Math.min(Math.max(1, S.chaserCount), g.players.length - 1);
     const wishers = shuffle(g.players.filter(p => p.wish));
     const others = shuffle(g.players.filter(p => !p.wish));
@@ -527,7 +530,7 @@ export class Room extends DurableObject {
     const near = v.role === 'runner' && v.state === 'alive' && playing ? this.nearestChaser(v) : null;
     const rt = this.rescueTarget(v);
     const me = {
-      id: v.id, name: v.name, host: v.host, role: v.role, state: v.state, wish: v.wish, outReason: v.outReason,
+      id: v.id, name: v.name, host: v.host, role: v.role, state: v.state, wish: v.wish, checked: !!v.checked, outReason: v.outReason,
       hasPos: v.lat != null, acc: v.acc,
       outsideLeft: v.outsideAt != null ? Math.max(0, S.boundaryAllow - (now - v.outsideAt) / 1000) : null,
       jailOutLeft: v.jailOutAt != null ? Math.max(0, S.boundaryAllow - (now - v.jailOutAt) / 1000) : null,
@@ -543,7 +546,7 @@ export class Room extends DurableObject {
     const out = {
       type: 'state', now, code: g.code, phase: g.phase, settings: S,
       hideEndsAt: g.hideEndsAt, endsAt: g.endsAt, area: g.area, jails: g.jails.map(j => [j.lat, j.lng]),
-      players: g.players.map(p => ({ id: p.id, name: p.name, host: p.host, wish: p.wish, role: g.phase === 'lobby' ? null : p.role, state: p.state, connected: p.connected, hasPos: p.lat != null })),
+      players: g.players.map(p => ({ id: p.id, name: p.name, host: p.host, wish: p.wish, role: g.phase === 'lobby' ? null : p.role, state: p.state, connected: p.connected, hasPos: p.lat != null, checked: !!p.checked })),
       me, tokens, alive, catchCount: g.catchCount,
       reports: v.role === 'chaser' && v.state !== 'out' && playing ? g.reports.map(r => { const p = g.players.find(x => x.id === r.from); return p ? { id: r.id, name: p.name, dist: Math.round(distM(v, p.connected ? p : (p.known || p))) } : null; }).filter(Boolean) : [],
       album: this.canViewPhotos(v) || g.phase === 'ended' ? g.album : [],

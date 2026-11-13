@@ -149,7 +149,27 @@ const rw = () => TN[S() ? S().mode : 'tag'][1];
 
 // ===================== 소리·진동 =====================
 let audio = null;
-function unlockAudio(){ if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } if (audio && audio.state === 'suspended') audio.resume(); }
+function unlockAudio(){
+  // 아이폰(iOS 16.4+): 'playback'으로 두면 무음 스위치를 켜도 소리가 나요
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+  if (audio && audio.state === 'suspended') audio.resume();
+}
+// 사이렌: 낮은음↔높은음을 오가는 큰 경보음
+function siren(sec){
+  if (!audio) return;
+  try {
+    const t = audio.currentTime, d = sec || 0.9;
+    const o = audio.createOscillator(), g = audio.createGain(), o2 = audio.createOscillator();
+    o.type = 'sawtooth'; o2.type = 'square';
+    for (let k = 0; k < d / 0.3; k++) {
+      o.frequency.setValueAtTime(k % 2 ? 1400 : 760, t + k * 0.3); o.frequency.linearRampToValueAtTime(k % 2 ? 760 : 1400, t + (k + 1) * 0.3);
+      o2.frequency.setValueAtTime(k % 2 ? 1402 : 762, t + k * 0.3); o2.frequency.linearRampToValueAtTime(k % 2 ? 762 : 1402, t + (k + 1) * 0.3);
+    }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.45, t + 0.03); g.gain.setValueAtTime(0.45, t + d - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); o2.connect(g); g.connect(audio.destination); o.start(t); o2.start(t); o.stop(t + d); o2.stop(t + d);
+  } catch(e){}
+}
 function beep(f){
   if (!audio) return;
   try { const o = audio.createOscillator(), g = audio.createGain(); o.type = 'square'; o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.18); } catch(e){}
@@ -238,6 +258,23 @@ function geoGuide(){
   if (samsung) return ['주소창의 <b>자물쇠</b> 아이콘을 눌러요', '<b>권한</b> → <b>위치</b>를 <b>허용</b>으로 바꿔요', '안 되면: 메뉴(≡) → <b>설정</b> → <b>사이트 및 다운로드</b> → <b>사이트 권한</b> → <b>위치</b>', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
   if (android) return ['주소창 왼쪽 아이콘(자물쇠·설정 모양)을 눌러요', '<b>권한</b> → <b>위치</b>를 <b>허용</b>으로 바꿔요', '이 화면으로 돌아와 <b>새로고침</b>을 눌러요'];
   return ['주소창 왼쪽 자물쇠 아이콘을 눌러요', '<b>위치</b>를 <b>허용</b>으로 바꿔요', '<b>새로고침</b>을 눌러요'];
+}
+// 소리 점검: 게임 전에 주머니 속에서도 경고음이 들리는지 확인해요
+function checkCard(m){
+  if (m.checked) return '<div class="card row" style="padding:10px 10px 10px 16px"><div style="flex:1"><div style="font-weight:700;color:#1F6B2A">소리 점검 완료</div><div class="sub small">경기장 밖으로 나가면 사이렌이 울려요</div></div>' +
+    '<button class="chipbtn" data-act="soundtest">다시 듣기</button><button class="tg ' + (C.sound ? 'on' : 'off') + '" data-act="sound" aria-label="경고음 켜기/끄기"><span></span></button></div>';
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  let h = '<div class="card" style="display:flex;flex-direction:column;gap:12px;border:2px solid var(--blue)">' +
+    '<div class="row"><svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#1F6FEB"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round"/></svg>' +
+    '<div><div style="font-size:19px;font-weight:900">소리 점검이 필요해요</div><div class="sub small">주머니에 넣어도 경고음이 들리는지 미리 확인해요. 모두 점검해야 시작할 수 있어요</div></div></div>';
+  if (C.checkStep === 'asked') h += '<div style="font-weight:700;text-align:center;font-size:17px">사이렌 소리가 크게 들렸나요?</div><div class="row"><button class="mid" data-act="checkNo" style="flex:1">안 들려요</button><button class="big blue" data-act="checkYes" style="flex:1;min-height:52px;font-size:17px">잘 들려요</button></div><button class="link" data-act="soundtest">한 번 더 울리기</button>';
+  else if (C.checkStep === 'help') h += '<ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:15px">' +
+    '<li>옆쪽 <b>볼륨 올리기 버튼</b>을 여러 번 눌러요' + (ios ? '' : ' (뜨는 창에서 <b>미디어</b> 볼륨을 올려요)') + '</li>' +
+    (ios ? '<li>무음 모드여도 이 사이트 소리는 나요. <b>볼륨</b>만 올리면 돼요</li>' : '<li>방해 금지 모드가 켜져 있으면 꺼요</li>') +
+    '<li>블루투스 이어폰·스피커가 연결돼 있으면 그쪽으로 소리가 나가요</li></ol>' +
+    '<button class="big blue" data-act="soundtest">다시 울려보기</button>';
+  else h += '<button class="big blue" data-act="soundtest">경고음 울려보기</button>';
+  return h + '</div>';
 }
 function geoCard(){
   if (C.pos && !C.geoErr) return '';
@@ -379,11 +416,11 @@ B.lobby = () => {
   '<div class="scr"><div class="pad">' +
     '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
     '<div id="lGeo"></div>' +
+    '<div id="lCheck"></div>' +
     '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div class="sub small">모드</div><div id="lMode" style="font-weight:700"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
     '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div class="row" style="justify-content:space-between;padding:2px 4px 0"><b id="lCount"></b><span class="sub small">지망자 중에서 랜덤으로 뽑아요</span></div>' +
     '<div class="list" id="lList"></div>' +
-    '<div class="card row" style="padding:10px 10px 10px 16px"><div style="flex:1"><div style="font-weight:700">내 경고음</div><div class="sub small">경기장 밖으로 나가면 소리로 알려줘요</div></div><button class="chipbtn" data-act="soundtest">소리 테스트</button><button class="tg" id="lSound" data-act="sound" aria-label="경고음 켜기/끄기"><span></span></button></div>' +
     '<div id="lActions" style="display:flex;flex-direction:column;gap:12px"></div>' +
   '</div></div><div id="lOv"></div>';
   const m = makeMap($('#lmap'), false); maps.push(m); C.lmap = m;
@@ -403,13 +440,15 @@ U.lobby = () => {
   setHTML($('#lList'), st.players.map(p =>
     '<div class="item"><div class="av">' + esc(p.name.charAt(0)) + '</div><span style="flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + (p.id === m.id ? ' (나)' : '') + '</span>' +
     (p.host ? '<span class="chip c-host">방장</span>' : '') + (p.wish ? '<span class="chip c-wish">' + cw() + ' 지망</span>' : '') +
-    (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : '') + '</div>').join(''));
-  const sb = $('#lSound'); sb.className = 'tg ' + (C.sound ? 'on' : 'off');
+    (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : !p.checked ? '<span class="chip c-warn">점검 전</span>' : '<span class="chip c-ok">준비 완료</span>') + '</div>').join(''));
+  setHTML($('#lCheck'), checkCard(m));
   let act = '<button class="mid' + (m.wish ? ' wish' : '') + '" data-act="wish">' + cw() + (m.wish ? ' 지망 취소' : ' 지망하기') + '</button>';
   if (m.host) {
     act += '<div class="row"><button class="mid" data-act="settings" style="flex:1">게임 설정</button><button class="mid" data-act="editor" style="flex:1">경기장' + (s.mode === 'cops' ? '·감옥' : '') + ' 편집</button></div>';
-    const noPos = st.players.filter(p => !p.hasPos);
-    if (noPos.length) act += '<div class="big gray" style="flex-direction:column;gap:2px;padding:10px 16px;font-size:16px"><span>위치를 켜야 시작할 수 있어요</span><span class="small" style="font-weight:500">위치 꺼짐: ' + noPos.map(p => esc(p.name)).join(', ') + '</span></div>';
+    const noPos = st.players.filter(p => !p.hasPos), noChk = st.players.filter(p => p.hasPos && !p.checked);
+    if (noPos.length || noChk.length) act += '<div class="big gray" style="flex-direction:column;gap:2px;padding:10px 16px;font-size:16px"><span>모두 준비가 끝나야 시작할 수 있어요</span>' +
+      (noPos.length ? '<span class="small" style="font-weight:500">위치 꺼짐: ' + noPos.map(p => esc(p.name)).join(', ') + '</span>' : '') +
+      (noChk.length ? '<span class="small" style="font-weight:500">소리 점검 전: ' + noChk.map(p => esc(p.name)).join(', ') + '</span>' : '') + '</div>';
     else act += '<button class="big blue" data-act="start">게임 시작</button>';
   } else act += '<div class="big gray" style="font-weight:500;font-size:16px">방장이 시작하길 기다리는 중…</div>';
   setHTML($('#lActions'), act);
@@ -714,7 +753,10 @@ document.addEventListener('click', e => {
     case 'reload': location.reload(); break;
     case 'geoHelp': C.geoHelp = true; render(); break;
     case 'geoHelpClose': C.geoHelp = false; render(); break;
-    case 'soundtest': unlockAudio(); beep(); buzz(200); break;
+    case 'soundtest': unlockAudio(); siren(1.8); buzz([400,150,400,150,400]); C.checkStep = 'asked'; render(); break;
+    case 'checkYes': C.checkStep = null; send({ type:'check', ok:true }); toast('준비 완료! 이 소리가 경고음이에요'); break;
+    case 'checkNo': C.checkStep = 'help'; render(); break;
+    case 'recheck': C.checkStep = null; send({ type:'check', ok:false }); break;
     case 'wish': send({ type:'wish', on:!m.wish }); break;
     case 'settings': C.settingsOpen = true; C.settingsFilled = false; render(); break;
     case 'settingsClose': C.settingsOpen = false; render(); break;
@@ -766,9 +808,9 @@ let lastPhotoAlert = false;
 setInterval(() => {
   const m = me(); if (!m || !C.st) return;
   const inGame = C.st.phase === 'playing';
-  if (inGame && m.state !== 'out' && (m.outsideLeft != null || m.jailOutLeft != null)) { if (C.sound) beep(); buzz(300); }
+  if (inGame && m.state !== 'out' && (m.outsideLeft != null || m.jailOutLeft != null)) { if (C.sound) siren(0.9); buzz([500,100,300]); }
   const ph = m.photoLeft != null;
-  if (ph && !lastPhotoAlert) { if (C.sound) beep(660); buzz([200,100,200]); }
+  if (ph && !lastPhotoAlert) { if (C.sound) siren(0.6); buzz([200,100,200,100,200]); }
   lastPhotoAlert = ph;
 }, 1000);
 
