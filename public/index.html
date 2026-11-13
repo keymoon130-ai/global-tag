@@ -392,7 +392,7 @@ function drawArea(lay, area, jails, radius, showJails){
 function drawTokens(lay, tokens){
   (tokens || []).forEach(t => {
     const col = t.kind === 'out' ? '#9AA1AC' : t.kind === 'enemy' ? '#E8590C' : (t.kind === 'me' && me() && me().state === 'out' ? '#9AA1AC' : '#1F6FEB');
-    const lb = t.kind === 'me' ? '나' : t.name + (t.kind === 'out' ? ' · 아웃' : '') + (t.stale != null ? ' · ' + t.stale + '초 전' : '') + (t.pub ? ' · 공개' : '') + (t.disc ? ' · 끊김' : '') + (t.jailed ? ' · 수감' : '');
+    const lb = t.kind === 'me' ? '나' : t.name + (t.kind === 'out' ? ' · 아웃' : '') + (t.stale != null ? ' · ' + t.stale + '초 전' : '') + (t.pub ? ' · 공개' : '') + (t.disc ? ' · 끊김' : '') + (t.jailed ? ' · 수감' : '') + (t.escort ? ' · 연행 중' : '');
     if (t.kind === 'me' && t.acc && t.acc < 200) L.circle([t.lat, t.lng], { radius:t.acc, color:'#1F6FEB', weight:1, opacity:.3, fillOpacity:.06, interactive:false }).addTo(lay);
     const h = '<div class="tk" style="--c:' + col + '"><i class="' + (t.kind === 'me' ? 'me' : '') + ((t.stale != null || t.disc) ? ' st' : '') + '"></i><span>' + esc(lb) + '</span></div>';
     L.marker([t.lat, t.lng], { icon:L.divIcon({ className:'', html:h, iconSize:[0,0] }), interactive:false, keyboard:false, zIndexOffset:t.kind === 'me' ? 1000 : 0 }).addTo(lay);
@@ -679,8 +679,15 @@ U.game = () => {
     C.gVer = C.stVer;
     const lay = C.gmap._lay; lay.clearLayers();
     drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops');
-    st.players.forEach(p => {}); // 위치는 tokens로만 받아요
     drawTokens(lay, st.tokens);
+    const e = m.escort;
+    if (e) {
+      // 도둑: 따라갈 경찰 표시 / 둘 다: 경찰 → 감옥 점선
+      const police = e.role === 'thief' ? (e.lat != null ? [e.lat, e.lng] : null) : (C.pos ? [C.pos.lat, C.pos.lng] : null);
+      if (e.role === 'thief' && police) L.marker(police, { icon:L.divIcon({ className:'', html:'<div class="tk" style="--c:#E8590C"><i class="me" style="box-shadow:0 0 0 9px rgba(232,89,12,.25)"></i><span>' + esc(e.name) + ' (따라가기)</span></div>', iconSize:[0,0] }), interactive:false, zIndexOffset:900 }).addTo(lay);
+      if (e.role === 'police' && e.lat != null) L.marker([e.lat, e.lng], { icon:L.divIcon({ className:'', html:'<div class="tk" style="--c:#E8590C"><i></i><span>' + esc(e.name) + ' (연행 중)</span></div>', iconSize:[0,0] }), interactive:false, zIndexOffset:800 }).addTo(lay);
+      if (police && e.jail) L.polyline([police, e.jail], { color:'#15171A', weight:3, dashArray:'2 8', opacity:.8, interactive:false }).addTo(lay);
+    }
   }
   const roleName = m.role === 'chaser' ? cw() : rw();
   const rc = m.state === 'out' ? 'r-out' : m.role === 'chaser' ? 'r-chaser' : 'r-runner';
@@ -691,6 +698,7 @@ U.game = () => {
   if (m.publicByPhoto) bn = '<div class="banner" style="background:#FFE3E3;color:#A51D1D">사진을 안 보내서 내 위치가 모두에게 보여요</div>';
   else if (m.state === 'out') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">' + esc(m.outReason || '아웃') + ' · 관전 중이라 모두의 위치가 보여요</div>';
   else if (m.state === 'jailed') bn = '<div class="banner" style="background:#E9ECF0;color:#3A404A">감옥 ' + m.jailIndex + '에 갇혔어요 · 회색 원 안에 있어야 해요</div>';
+  else if (m.state === 'escort' && m.escort) bn = '<div class="banner" style="background:' + (m.escort.dist > 30 ? '#FFE3E3;color:#A51D1D' : '#E9ECF0;color:#3A404A') + '">' + (m.escort.dist > 30 ? '경찰과 ' + m.escort.dist + 'm 떨어졌어요 · ' + esc(m.escort.name) + '님을 따라가세요' : esc(m.escort.name) + '님에게 연행 중 · 탈출할 수 없어요') + '</div>';
   else if (!m.hasPos || C.geoErr) bn = '<div class="banner" style="background:#FFF3BF;color:#5C4400;display:flex;align-items:center;gap:8px;justify-content:center"><span>' + esc(C.geoErr || '내 위치를 찾는 중이에요…') + '</span>' + (C.geoErr ? '<button class="chipbtn" data-act="geoHelp" style="min-height:36px">해결하기</button>' : '') + '</div>';
   if (C.geoHelp && C.geoErr) bn += '<div class="sheet" style="z-index:980"><div class="in">' + geoCard() + '<button class="mid" data-act="geoHelpClose">닫기</button></div></div>';
   setHTML($('#gBanner'), bn);
@@ -698,11 +706,19 @@ U.game = () => {
   let b = '';
   if (hiding) b = m.role === 'chaser' ? '<div class="hint">숨는 시간이 끝나면 출발해요</div><div class="big gray">기다리는 중</div>' : '<div class="hint">' + cw() + '가 출발하기 전에 숨으세요</div><div class="big gray">숨는 중</div>';
   else if (m.state === 'out') b = '<div class="hint">모두의 위치를 볼 수 있어요</div><div class="big gray">아웃 · 관전 중</div>';
+  else if (m.role === 'chaser' && m.busy && m.escort) {
+    const e = m.escort;
+    b = '<div class="hint">' + esc(e.name) + '님 연행 중 · 거리 ' + (isFinite(e.dist) ? e.dist + 'm' : '?') + (e.connected ? '' : ' · 상대 연결 끊김') + '</div>' +
+      '<div style="text-align:center;font-size:20px;font-weight:900">감옥 ' + e.jailIndex + '까지 ' + (e.jailDist != null ? e.jailDist + 'm' : '?') + '</div>' +
+      (e.canJail ? '<button class="big blue" data-act="jailNow">수감하기</button>' : '<div class="big gray" style="font-size:16px">감옥 원 안에 들어가면 자동으로 수감돼요</div>') +
+      (st.reports.length ? '<div class="hint">신고 ' + st.reports.length + '건은 수감 후 확인할 수 있어요</div>' : '');
+  }
   else if (m.role === 'chaser') {
     if (st.reports.length) b = '<div class="hint">잡혔다는 신고가 왔어요</div>' + st.reports.map(r => '<div class="report"><span>' + esc(r.name) + ' <small class="sub" style="font-weight:500">· ' + (isFinite(r.dist) ? r.dist + 'm' : '?') + '</small></span><button class="no" data-act="deny" data-rid="' + r.id + '">아니에요</button><button class="ok" data-act="confirm" data-rid="' + r.id + '">확인</button></div>').join('');
     else b = '<div class="hint">잡힌 사람이 신고하면 여기서 확인해요</div><div class="big gray">신고 기다리는 중</div>';
   } else if (m.state === 'pending') b = '<div class="hint">' + cw() + '가 확인하면 처리돼요</div><div class="big gray">확인 기다리는 중…</div><button class="mid" data-act="cancel">신고 취소</button>';
   else if (m.state === 'jailed') b = '<div class="hint">동료 도둑이 감옥에서 구출 버튼을 누르면 풀려나요</div><div class="big gray">수감 중</div>';
+  else if (m.state === 'escort') b = '<div class="hint">경찰이 감옥에 도착하면 수감돼요' + (m.escort && m.escort.jailDist != null ? ' · 감옥 ' + m.escort.jailIndex + '까지 ' + m.escort.jailDist + 'm' : '') + '</div><div class="big gray">연행 중 (탈출 불가)</div>';
   else {
     if (m.rescue) {
       const pr = Math.round(m.rescue.progress * 100);
@@ -857,6 +873,7 @@ document.addEventListener('click', e => {
     case 'album': C.albumOpen = true; render(); break;
     case 'albumClose': C.albumOpen = false; render(); break;
     case 'toLobby': send({ type:'toLobby' }); break;
+    case 'jailNow': send({ type:'jailNow' }); break;
     case 'replay': {
       let f = 0; clearInterval(C.replayT);
       C.replayT = setInterval(() => { f += 0.01; if (!C.rmap || C.screen !== 'result') { clearInterval(C.replayT); return; } drawTrails(Math.min(1, f)); if (f >= 1) clearInterval(C.replayT); }, 80);

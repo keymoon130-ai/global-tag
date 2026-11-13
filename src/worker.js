@@ -289,6 +289,13 @@ export class Room extends DurableObject {
         if (ph && (this.canViewPhotos(p) || g.phase === 'ended')) try { ws.send(JSON.stringify({ type: 'photo', id: m.id, data: ph.data })); } catch (e) {}
         return;
       }
+      case 'jailNow': {
+        const t = this.escortOf(p); if (!t) return;
+        const nj = this.nearestJail(p);
+        if (nj && nj.d <= S.jailRadius + 25) { this.jailNow(p, t, nj.jail); this.changed(true); }
+        else this.toast(p, '감옥 가까이 가야 수감할 수 있어요');
+        return;
+      }
       case 'toLobby': if (p.host && g.phase === 'ended') this.toLobby(); return;
       case 'leave': this.leave(p, ws); return;
     }
@@ -338,7 +345,7 @@ export class Room extends DurableObject {
     g.players.forEach(p => {
       p.role = pick.includes(p) ? 'chaser' : 'runner';
       p.state = 'alive'; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.freezeUntil = 0;
-      p.photoDueAt = null; p.publicByPhoto = false; p.publicByDisc = false; p.trail = []; p.rescueStart = null; p.outReason = '';
+      p.photoDueAt = null; p.publicByPhoto = false; p.publicByDisc = false; p.trail = []; p.rescueStart = null; p.outReason = ''; p.escortBy = null; p.escorting = null;
       if (!p.connected && p.discAt == null) p.discAt = now;
     });
     g.reports = []; g.album = []; this.photos = {}; g.catchCount = 0; g.winner = null; g.winReason = '';
@@ -359,10 +366,17 @@ export class Room extends DurableObject {
   toLobby() {
     const g = this.g;
     g.phase = 'lobby'; g.reports = []; g.album = []; this.photos = {}; g.winner = null; g.winReason = '';
-    g.players.forEach(p => { p.role = 'runner'; p.state = 'alive'; p.trail = []; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.publicByPhoto = false; p.photoDueAt = null; p.outReason = ''; });
+    g.players.forEach(p => { p.role = 'runner'; p.state = 'alive'; p.trail = []; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.publicByPhoto = false; p.photoDueAt = null; p.outReason = ''; p.escortBy = null; p.escorting = null; });
     this.changed(true);
   }
   setOut(p, reason) {
+    const g = this.g;
+    if (p.escortBy) { const c = g.players.find(x => x.id === p.escortBy); if (c) c.escorting = null; p.escortBy = null; }
+    if (p.escorting) {
+      const t = g.players.find(x => x.id === p.escorting);
+      if (t && t.state === 'escort') { t.state = 'alive'; t.escortBy = null; this.toast(t, '연행하던 경찰이 탈락해서 풀려났어요! 도망쳐요'); }
+      p.escorting = null;
+    }
     p.state = 'out'; p.outReason = reason; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.rescueStart = null; p.photoDueAt = null;
     this.g.reports = this.g.reports.filter(r => r.from !== p.id);
     this.toast(p, reason + ' · 탈락했어요');
@@ -392,18 +406,19 @@ export class Room extends DurableObject {
   confirm(rid, chaser) {
     const g = this.g, S = g.settings;
     if (chaser.role !== 'chaser' || chaser.state === 'out') return;
+    if (this.escortOf(chaser)) { this.toast(chaser, '연행 중이라 지금은 확인할 수 없어요. 감옥에 넣은 뒤 확인해요'); return; }
     const r = g.reports.find(x => x.id === rid); if (!r) return;
     g.reports = g.reports.filter(x => x !== r);
     const p = g.players.find(x => x.id === r.from); if (!p || p.state !== 'pending') { this.broadcast(); return; }
     g.catchCount++;
     if (S.mode === 'cops') {
       if (g.jails.length) {
-        let best = g.jails[0];
-        g.jails.forEach(j => { if (distM(p, j) < distM(p, best)) best = j; });
-        p.state = 'jailed'; p.jailId = best.id; p.jailOutAt = null;
-        const idx = g.jails.indexOf(best) + 1;
-        this.toast(p, '체포됐어요! 감옥 ' + idx + '(으)로 가세요. 감옥 밖에 오래 있으면 탈락해요');
-        this.toastAll(chaser.name + '님이 ' + p.name + '님을 체포했어요', p.id);
+        // 강제 연행: 경찰이 감옥까지 데려가야 수감돼요 (탈출 불가)
+        p.state = 'escort'; p.escortBy = chaser.id; p.jailOutAt = null; p.outsideAt = null;
+        chaser.escorting = p.id;
+        this.toast(p, '체포됐어요! ' + chaser.name + '님을 따라 감옥까지 가요 (탈출 불가)');
+        this.toast(chaser, p.name + '님 체포! 감옥까지 데려가세요');
+        this.toastAll(chaser.name + '님이 ' + p.name + '님을 연행 중이에요', p.id);
       } else this.setOut(p, '체포');
     } else if (S.mode === 'zombie') {
       p.role = 'chaser'; p.state = 'alive';
@@ -432,6 +447,26 @@ export class Room extends DurableObject {
     if (p && p.state === 'pending') { p.state = 'alive'; this.toast(p, chaser.name + '님이 안 잡혔다고 했어요. 계속 도망쳐요!'); }
     this.changed();
   }
+  escortOf(c) {
+    if (!c.escorting) return null;
+    const t = this.g.players.find(x => x.id === c.escorting);
+    if (!t || t.state !== 'escort' || t.escortBy !== c.id) { c.escorting = null; return null; }
+    return t;
+  }
+  nearestJail(pos) {
+    let best = null, bd = Infinity;
+    this.g.jails.forEach(j => { const d = distM(pos, j); if (d < bd) { bd = d; best = j; } });
+    return best ? { jail: best, d: bd } : null;
+  }
+  jailNow(c, t, j) {
+    t.state = 'jailed'; t.jailId = j.id; t.escortBy = null; t.jailOutAt = null; t.outsideAt = null;
+    c.escorting = null;
+    const idx = this.g.jails.indexOf(j) + 1;
+    this.toast(t, '감옥 ' + idx + '에 갇혔어요. 동료가 구출하러 올 때까지 원 안에 있어요');
+    this.toast(c, t.name + '님 수감 완료! 이제 다른 도둑을 잡으러 가요');
+    this.toastAll(t.name + '님이 감옥 ' + idx + '에 갇혔어요', t.id);
+    this.checkWin();
+  }
   rescueTarget(p) {
     const g = this.g, S = g.settings;
     if (S.mode !== 'cops' || g.phase !== 'playing' || p.role !== 'runner' || p.state !== 'alive' || !p.connected) return null;
@@ -444,7 +479,7 @@ export class Room extends DurableObject {
     return null;
   }
   canViewPhotos(v) { const S = this.g.settings; return S.photoViewers === 'all' || v.role === 'chaser' || v.state === 'out'; }
-  isPhotoSender(p) { const S = this.g.settings; return p.state !== 'out' && p.state !== 'jailed' && (S.photoSenders === 'all' || p.role === 'runner'); }
+  isPhotoSender(p) { const S = this.g.settings; return p.state !== 'out' && p.state !== 'jailed' && p.state !== 'escort' && (S.photoSenders === 'all' || p.role === 'runner'); }
   photo(p, data) {
     const g = this.g;
     if (g.phase !== 'playing' || typeof data !== 'string' || !data.startsWith('data:image/') || data.length > 700000) return;
@@ -477,10 +512,10 @@ export class Room extends DurableObject {
     if (!chasers.length) return this.endGame('runner', cw + ' 팀이 모두 탈락했어요');
     if (S.mode === 'cops') {
       const thieves = runners.filter(p => p.state !== 'out');
-      const jailed = thieves.filter(p => p.state === 'jailed').length;
+      const jailed = thieves.filter(p => p.state === 'jailed' || p.state === 'escort').length;
       const free = thieves.filter(p => p.state === 'alive' || p.state === 'pending').length;
       if (!thieves.length) return this.endGame('chaser', '도둑이 모두 탈락했어요');
-      if (N ? jailed >= N : free === 0) return this.endGame('chaser', N ? '도둑 ' + N + '명을 동시에 가뒀어요' : '도둑을 모두 가뒀어요');
+      if (N ? jailed >= N : free === 0) return this.endGame('chaser', N ? '도둑 ' + N + '명을 동시에 잡아뒀어요' : '도둑을 모두 잡았어요');
     } else if (S.mode === 'zombie') {
       const surv = runners.filter(p => p.state !== 'out');
       if (!surv.length) return this.endGame('chaser', '생존자가 모두 감염됐어요');
@@ -504,7 +539,11 @@ export class Room extends DurableObject {
       g.players.forEach(p => {
         if (p.state !== 'out' && p.lat != null && (!p.trailAt || now - p.trailAt >= 5000)) { p.trailAt = now; p.trail.push([+p.lat.toFixed(6), +p.lng.toFixed(6), p.role === 'chaser' ? 1 : 0]); }
         if (p.state === 'out' || p.lat == null) return;
-        if (p.connected) {
+        if (p.escorting && p.connected) {
+          const t = this.escortOf(p), nj = t && this.nearestJail(p);
+          if (t && nj && nj.d <= S.jailRadius) this.jailNow(p, t, nj.jail);
+        }
+        if (p.connected && p.state !== 'escort') {
           if (!inPoly(p, g.area)) {
             if (p.outsideAt == null) { p.outsideAt = now; }
             else if (now - p.outsideAt >= S.boundaryAllow * 1000) { this.setOut(p, '경기장 이탈'); return; }
@@ -568,7 +607,7 @@ export class Room extends DurableObject {
       if (p === v) { if (p.lat != null) tokens.push({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, kind: 'me', acc: p.acc }); return; }
       if (!inGame && g.phase !== 'lobby') return;
       if (!pos) return;
-      const base = { id: p.id, name: p.name, lat: pos.lat, lng: pos.lng, disc: !p.connected, jailed: p.state === 'jailed' };
+      const base = { id: p.id, name: p.name, lat: pos.lat, lng: pos.lng, disc: !p.connected, jailed: p.state === 'jailed', escort: p.state === 'escort' };
       if (g.phase === 'lobby') { if (v.host) tokens.push({ ...base, kind: 'team' }); return; }
       if (p.state === 'out') { tokens.push({ ...base, kind: 'out' }); return; }
       if (v.state === 'out') { tokens.push({ ...base, kind: p.role === 'chaser' ? 'enemy' : 'team' }); return; }
@@ -591,8 +630,25 @@ export class Room extends DurableObject {
       freezeLeft: v.freezeUntil > now ? (v.freezeUntil - now) / 1000 : 0,
       canReport: this.canReport(v), nearDist: near ? Math.round(near.d) : null,
       rescue: rt ? { inmates: rt.inmates.length, progress: v.rescueStart ? Math.min(1, (now - v.rescueStart) / (S.rescueHold * 1000)) : 0 } : null,
-      jailIndex: v.jailId ? g.jails.findIndex(j => j.id === v.jailId) + 1 : 0
+      jailIndex: v.jailId ? g.jails.findIndex(j => j.id === v.jailId) + 1 : 0,
+      escort: null, busy: false
     };
+    // 연행 정보: 도둑은 따라갈 경찰 위치, 경찰은 데려갈 도둑과 감옥까지 거리
+    const pairOf = v.state === 'escort' ? g.players.find(x => x.id === v.escortBy) : this.escortOf(v);
+    if (pairOf) {
+      const police = v.state === 'escort' ? pairOf : v;
+      const ppos = police.connected ? police : (police.known || police);
+      const opos = pairOf.connected ? pairOf : (pairOf.known || pairOf);
+      const nj = ppos && ppos.lat != null ? this.nearestJail(ppos) : null;
+      me.escort = {
+        role: v.state === 'escort' ? 'thief' : 'police', name: pairOf.name, connected: pairOf.connected,
+        lat: opos && opos.lat != null ? opos.lat : null, lng: opos && opos.lat != null ? opos.lng : null,
+        dist: Math.round(distM(v, opos)),
+        jailIndex: nj ? g.jails.indexOf(nj.jail) + 1 : 0, jailDist: nj ? Math.round(nj.d) : null,
+        jail: nj ? [nj.jail.lat, nj.jail.lng] : null, canJail: !!nj && nj.d <= S.jailRadius + 25
+      };
+      me.busy = v.state !== 'escort';
+    }
     const runners = g.players.filter(p => p.role === 'runner');
     const alive = S.mode === 'cops' ? runners.filter(p => p.state === 'alive' || p.state === 'pending').length : runners.filter(p => p.state !== 'out').length;
     const out = {
