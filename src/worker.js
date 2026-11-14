@@ -103,6 +103,29 @@ function distToPolyM(pt, poly) {
 const EDGE_MARGIN = 10, CONFIRM_MS = 5000, BAD_ACC = 50, MAX_MARGIN = 30;
 // 경계 여유: 폰이 알려준 오차만큼 봐줘요 (최소 10m, 최대 30m). "확실히 나갔을 때"만 판정해요
 const margin = p => Math.min(MAX_MARGIN, Math.max(EDGE_MARGIN, Math.round(p.acc || 0)));
+// 지도에 보여줄 위치: 여유 안이라 '안에 있음'으로 판정됐으면 지도에서도 안쪽에 그려요 (버그처럼 안 보이게)
+function shownPos(p, pos, area, jail, jailRadius) {
+  const k = 111320, kx = 111320 * Math.cos(pos.lat * Math.PI / 180), mg = margin(p);
+  const back = (x, y) => ({ lat: pos.lat + y / k, lng: pos.lng + x / kx });
+  if (jail) {
+    const x = (jail.lng - pos.lng) * kx, y = (jail.lat - pos.lat) * k, d = Math.hypot(x, y);
+    if (d > jailRadius && d <= jailRadius + mg) { const f = (d - jailRadius * 0.85) / d; return back(x * f, y * f); }
+    return pos;
+  }
+  if (!area || area.length < 3 || inPoly(pos, area)) return pos;
+  const P = area.map(q => [(q[1] - pos.lng) * kx, (q[0] - pos.lat) * k]);
+  let bx = 0, by = 0, bd = Infinity;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const ax = P[j][0], ay = P[j][1], dx = P[i][0] - ax, dy = P[i][1] - ay, L2 = dx * dx + dy * dy;
+    let t = L2 ? -(ax * dx + ay * dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+    const qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(qx, qy);
+    if (d < bd) { bd = d; bx = qx; by = qy; }
+  }
+  if (bd > mg || bd === 0) return pos;
+  const f = (bd + 3) / bd; // 경계선에서 3m 안쪽
+  const q = back(bx * f, by * f);
+  return inPoly(q, area) ? q : back(bx, by);
+}
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function cleanName(s) { return String(s || '').replace(/[<>&"]/g, '').trim().slice(0, 12) || '이름없음'; }
 function hexArea(c, r) {
@@ -776,13 +799,16 @@ export class Room extends DurableObject {
     const g = this.g, S = g.settings, now = Date.now();
     const playing = g.phase === 'playing', inGame = playing || g.phase === 'hiding';
     const tokens = [];
+    const show = (p, pos) => (!inGame || p.state === 'out' || p.state === 'escort') ? { lat: pos.lat, lng: pos.lng }
+      : shownPos(p, pos, g.area, p.state === 'jailed' ? g.jails.find(j => j.id === p.jailId) : null, S.jailRadius);
     g.players.forEach(p => {
       const pos = p.connected ? (p.lat != null ? { lat: p.lat, lng: p.lng } : null) : p.known;
       if (v.late || p.late) return;
-      if (p === v) { if (p.lat != null) tokens.push({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, kind: 'me', acc: p.acc }); return; }
+      if (p === v) { if (p.lat != null) { const q = show(p, p); tokens.push({ id: p.id, name: p.name, lat: q.lat, lng: q.lng, kind: 'me', acc: p.acc }); } return; }
       if (!inGame && g.phase !== 'lobby') return;
       if (!pos) return;
-      const base = { id: p.id, name: p.name, lat: pos.lat, lng: pos.lng, disc: !p.connected, jailed: p.state === 'jailed', escort: p.state === 'escort' };
+      const sp0 = show(p, pos);
+      const base = { id: p.id, name: p.name, lat: sp0.lat, lng: sp0.lng, disc: !p.connected, jailed: p.state === 'jailed', escort: p.state === 'escort' };
       if (g.phase === 'lobby') { if (v.host) tokens.push({ ...base, kind: 'team' }); return; }
       if (p.state === 'out') { tokens.push({ ...base, kind: 'out' }); return; }
       if (v.state === 'out') { tokens.push({ ...base, kind: p.role === 'chaser' ? 'enemy' : 'team' }); return; }
