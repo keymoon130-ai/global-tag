@@ -41,27 +41,28 @@ const DEFAULTS = {
   catchDist: 30, boundaryAllow: 60, disconnectAllow: 60, autoOut: 180, transfer: false, transferCountdown: 10,
   rescueHold: 3, jailRadius: 20,
   copsMajority: false,
+  radarRangeOn: false, radarRangeDist: 50, radarSightOn: false, radarSightDist: 60, radarSightAngle: 60, radarCooldown: 0, radarActive: 15,
   photoOn: false, photoEvery: 600, photoDeadline: 90, photoSenders: 'runners', photoViewers: 'chasers'
 };
 const NUM_LIMITS = {
   chaserCount: [1, 10], timeLimit: [60, 7200], hideTime: [0, 1800], winN: [1, 20], revealC2RSec: [3, 600], revealR2CSec: [3, 600],
   catchDist: [3, 200], boundaryAllow: [5, 600], disconnectAllow: [10, 600], autoOut: [60, 1800], transferCountdown: [0, 120], rescueHold: [1, 30],
-  jailRadius: [5, 100], photoEvery: [60, 3600], photoDeadline: [15, 600]
+  jailRadius: [5, 100], radarRangeDist: [10, 300], radarSightDist: [10, 300], radarSightAngle: [20, 180], radarCooldown: [0, 600], radarActive: [5, 120], photoEvery: [60, 3600], photoDeadline: [15, 600]
 };
 const ENUMS = {
   mode: ['tag', 'hide', 'cops', 'zombie'], winMode: ['all', 'n'], revealC2R: ['hidden', 'interval', 'always'],
   revealR2C: ['hidden', 'interval', 'always'], photoSenders: ['runners', 'all'], photoViewers: ['chasers', 'all']
 };
-const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority'];
+const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority', 'radarRangeOn', 'radarSightOn'];
 const TN = { tag: ['술래', '도망자'], hide: ['술래', '숨는 사람'], cops: ['경찰', '도둑'], zombie: ['좀비', '생존자'] };
 const LABELS = {
   mode: '모드', chaserCount: '잡는 쪽 인원', timeLimit: '제한 시간', hideTime: '숨는 시간', winMode: '승리 조건', winN: 'N명',
   revealC2R: '잡는 쪽 위치 보기', revealC2RSec: '잡는 쪽 보기 간격', revealR2C: '도망치는 쪽 위치 보기', revealR2CSec: '도망치는 쪽 보기 간격', teamSee: '같은 팀 위치 보기',
   catchDist: '잡기 거리', boundaryAllow: '이탈 허용 시간', disconnectAllow: '끊김 허용 시간', autoOut: '자동 탈락 시간', transfer: '술래 넘기기', transferCountdown: '넘긴 뒤 카운트다운',
-  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
+  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', radarRangeOn: '범위 레이더', radarRangeDist: '범위 레이더 반경', radarSightOn: '시야 레이더', radarSightDist: '시야 거리', radarSightAngle: '시야각', radarCooldown: '레이더 쿨타임', radarActive: '레이더 작동 시간', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
 };
 const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: 'N명', hidden: '안 보임', interval: 'N초마다', always: '항상', runners: '도망치는 쪽', chasers: '잡는 쪽', true: '켬', false: '끔' };
-const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', photoEvery: '초', photoDeadline: '초' };
+const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', radarRangeDist: 'm', radarSightDist: 'm', radarSightAngle: '°', radarCooldown: '초', radarActive: '초', photoEvery: '초', photoDeadline: '초' };
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const IDLE_MS = 15 * 60 * 1000;
 
@@ -797,8 +798,22 @@ export class Room extends DurableObject {
       rescue: rt ? { inmates: rt.inmates.length, progress: v.rescueStart ? Math.min(1, (now - v.rescueStart) / (S.rescueHold * 1000)) : 0 } : null,
       jailIndex: v.jailId ? g.jails.findIndex(j => j.id === v.jailId) + 1 : 0,
       escort: null, busy: false, late: !!v.late,
-      protectLeft: v.protectUntil > now ? (v.protectUntil - now) / 1000 : 0
+      protectLeft: v.protectUntil > now ? (v.protectUntil - now) / 1000 : 0,
+      radar: null
     };
+    // 레이더 (잡는 쪽만): 근처 잡을 수 있는 상대의 거리·방위만 보내요. 화면엔 안 그리고 소리·신호 막대로만 써요
+    if ((S.radarRangeOn || S.radarSightOn) && playing && v.role === 'chaser' && v.state === 'alive' && v.lat != null && !(v.freezeUntil > now)) {
+      const maxD = Math.max(S.radarRangeOn ? S.radarRangeDist : 0, S.radarSightOn ? S.radarSightDist : 0);
+      me.radar = [];
+      g.players.forEach(p => {
+        if (p.role !== 'runner' || p.state !== 'alive' || p.protectUntil > now) return;
+        const pos = p.connected ? p : p.known; if (!pos || pos.lat == null) return;
+        const d = distM(v, pos); if (d > maxD) return;
+        const toR = Math.PI / 180, la1 = v.lat * toR, la2 = pos.lat * toR, dl = (pos.lng - v.lng) * toR;
+        const b = (Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)) / toR + 360) % 360;
+        me.radar.push({ d: Math.round(d), b: Math.round(b) });
+      });
+    }
     // 연행 정보: 도둑은 따라갈 경찰 위치, 경찰은 데려갈 도둑과 감옥까지 거리
     const pairOf = v.state === 'escort' ? g.players.find(x => x.id === v.escortBy) : this.escortOf(v);
     if (pairOf) {

@@ -114,6 +114,13 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:4px;vertical-align:-1px}
 .sr{position:absolute;left:-9999px}
 .ov.red{z-index:1001}
+.radar{display:flex;flex-direction:column;gap:6px;background:#F6F7F9;border-radius:14px;padding:8px 12px}
+.radar .rrow{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.radar .rrow span.l{width:56px;flex:none;color:#3A404A}
+.bars{display:flex;gap:3px;flex:1}
+.bars i{flex:1;height:10px;border-radius:3px;background:#DDE2E8}
+.bars.range i.on{background:#E8590C}
+.bars.sight i.on{background:#1F6FEB}
 .lockbtn{position:fixed;left:max(12px,calc(50vw - 228px));bottom:calc(env(safe-area-inset-bottom) + 190px);z-index:600;height:48px;padding:0 14px;border-radius:24px;border:0;background:#15171A;color:#fff;font-weight:700;font-size:15px;box-shadow:0 2px 10px rgba(21,23,26,.25);display:flex;align-items:center;gap:6px}
 .lock{position:fixed;inset:0;z-index:990;background:rgba(0,0,0,.94);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 40px) 24px calc(env(safe-area-inset-bottom) + 40px);text-align:center;touch-action:none;-webkit-user-select:none;user-select:none}
 .lock .big-t{font-size:64px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
@@ -546,7 +553,7 @@ U.lobby = () => {
     '<div class="item"><div class="av">' + esc(p.name.charAt(0)) + '</div><span style="flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + (p.id === m.id ? ' (나)' : '') + '</span>' +
     (p.host ? '<span class="chip c-host">방장</span>' : '') + (p.wish ? '<span class="chip c-wish">' + cw() + ' 지망</span>' : '') +
     (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : !p.checked ? '<span class="chip c-warn">점검 전</span>' : '<span class="chip c-ok">준비 완료</span>') + '</div>').join(''));
-  setHTML($('#lCheck'), checkCard(m));
+  setHTML($('#lCheck'), checkCard(m) + compassCard(s));
   setHTML($('#lPush'), pushCard(m));
   setHTML($('#lAwake'), awakeCard());
   let act = '<button class="mid' + (m.wish ? ' wish' : '') + '" data-act="wish">' + cw() + (m.wish ? ' 지망 취소' : ' 지망하기') + '</button>';
@@ -596,6 +603,13 @@ const SCHEMA = [
   ['jailRadius','감옥 반경(m)','num'],
   ['copsMajority','시간 끝날 때 과반 수감이면 경찰 승리','bool'],
   ['h','추가 모드'],
+  ['radarRangeOn','범위 레이더 (잡는 쪽 폰에서 삑삑)','bool'],
+  ['radarRangeDist','└ 반경(m)','num'],
+  ['radarSightOn','시야 레이더 (폰을 비춘 방향)','bool'],
+  ['radarSightDist','└ 시야 거리(m)','num'],
+  ['radarSightAngle','└ 시야각(°)','num'],
+  ['radarActive','레이더 작동 시간(초)','num'],
+  ['radarCooldown','레이더 쿨타임(초, 0이면 항상 켜짐)','num'],
   ['photoOn','사진 모드','bool'],
   ['photoEvery','└ 간격(초)','num'],
   ['photoDeadline','└ 보내는 제한 시간(초)','num'],
@@ -829,7 +843,9 @@ U.game = () => {
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
     else b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 오면 누를 수 있어요</div><div class="big gray"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#5B6270" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#5B6270" stroke-width="2"/></svg>근처에 ' + cw() + '가 없어요</div>';
   }
+  if (!hiding && m.role === 'chaser' && m.state === 'alive' && m.radar) b = radarPanel() + b;
   setHTML($('#gBottom'), b);
+  drawRadarShapes();
   const bar = $('#rescueBar'); if (bar && m.rescue) bar.style.width = Math.round(m.rescue.progress * 100) + '%';
 
   // 오버레이
@@ -881,6 +897,9 @@ function rulesList(st, m){
     zombie: ['숨는 시간엔 첫 좀비는 <b>눈 감고 제자리</b>에서 기다려요', '감염되면 <b>10초 뒤</b>에 좀비로 변해요. 그동안은 못 잡아요']
   };
   const extra = [];
+  if (s.radarRangeOn) extra.push('<b>범위 레이더:</b> ' + r + '가 ' + c + ' 반경 ' + s.radarRangeDist + 'm 안에 있으면 ' + c + ' 폰에서 "삑삑" 소리가 나요. 가까울수록 크고 빨라져요');
+  if (s.radarSightOn) extra.push('<b>시야 레이더:</b> ' + c + '가 폰을 세워 비춘 방향 ' + s.radarSightAngle + '° 안, ' + s.radarSightDist + 'm 안에 ' + r + '가 있으면 "띠딕" 소리가 나요. 정면·가까울수록 커져요. 주머니 잠금 중엔 꺼져요');
+  if ((s.radarRangeOn || s.radarSightOn) && s.radarCooldown > 0) extra.push('레이더는 버튼을 누르면 ' + s.radarActive + '초 동안 켜지고, ' + s.radarCooldown + '초 쉬어요');
   if (s.photoOn) extra.push('<b>사진 모드:</b> ' + Math.round(s.photoEvery / 60) + '분마다 사진을 보내야 해요. 늦으면 위치가 공개돼요');
   return (by[mode] || []).concat(extra, common);
 }
@@ -922,6 +941,7 @@ function lockScreen(){
   if (m.state === 'escort' && m.escort) notes.push(m.escort.name + '님에게 연행 중 · 경찰과 ' + m.escort.dist + 'm');
   if (m.busy && m.escort) notes.push(m.escort.name + '님 연행 중 · 감옥까지 ' + m.escort.jailDist + 'm');
   if (m.state === 'pending') notes.push(cw() + '의 확인을 기다리는 중');
+  if (m.radar && st.settings.radarSightOn) notes.push('시야 레이더는 잠금 중엔 꺼져요' + (st.settings.radarRangeOn ? ' · 범위 레이더는 작동해요' : ''));
   const pct = Math.min(1, C.unlockP || 0), circ = 2 * Math.PI * 44;
   return '<div class="lock" id="lockEl"><div style="display:flex;flex-direction:column;gap:10px;align-items:center"><div class="sub" style="color:#C9CED6">' + (hiding ? '숨는 시간' : '남은 시간') + '</div><div class="big-t">' + fmt(left) + '</div><div style="font-size:18px;font-weight:700">' + (m.state === 'out' ? '관전 중' : (m.role === 'chaser' ? cw() : rw())) + '</div></div>' +
     '<div style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:420px">' + notes.map(n => '<div class="note">' + esc(n) + '</div>').join('') + '</div>' +
@@ -1060,6 +1080,8 @@ document.addEventListener('click', e => {
     case 'jailNow': send({ type:'jailNow' }); break;
     case 'lock': C.locked = true; C.unlockP = 0; keepAwake(); render(); break;
     case 'players': C.playersOpen = true; render(); break;
+    case 'compass': askCompass(); break;
+    case 'radarGo': { const s = S(); C.radarUntil = Date.now() + s.radarActive * 1000; unlockAudio(); render(); break; }
     case 'rulesOpen': C.rulesOpen = true; C.playersOpen = false; render(); break;
     case 'rulesClose': C.rulesOpen = false; render(); break;
     case 'playersClose': C.playersOpen = false; render(); break;
@@ -1098,6 +1120,113 @@ function confirmLeave(){
 document.addEventListener('pointerdown', e => { if (!C.locked && e.target.closest('[data-hold="rescue"]')) { e.preventDefault(); C.holding = true; send({ type:'rescue', on:true }); } });
 const stopHold = () => { if (C.holding) { C.holding = false; send({ type:'rescue', on:false }); } };
 document.addEventListener('pointerup', stopHold); document.addEventListener('pointercancel', stopHold);
+
+// ===================== 나침반 (시야 레이더용) =====================
+// 아이폰만 나침반 권한 버튼이 필요해요 (다른 폰은 바로 됨)
+const COMPASS = { heading:null, needPerm: IS_IOS && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function', listening:false, granted:false, denied:false };
+function onOrient(e){
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading; // 아이폰
+  else if (e.absolute && e.alpha != null) h = 360 - e.alpha; // 안드로이드 (북쪽 기준)
+  if (h == null) return;
+  const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  h = (h + so + 360) % 360;
+  if (COMPASS.heading == null) COMPASS.heading = h;
+  else { const d = ((h - COMPASS.heading + 540) % 360) - 180; COMPASS.heading = (COMPASS.heading + d * 0.35 + 360) % 360; } // 흔들림 줄이기
+  COMPASS.last = Date.now();
+  if (!COMPASS.raf) COMPASS.raf = requestAnimationFrame(() => { COMPASS.raf = 0; drawRadarShapes(); });
+}
+function startCompass(){
+  if (COMPASS.listening) return; COMPASS.listening = true;
+  if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOrient, true);
+  window.addEventListener('deviceorientation', onOrient, true);
+}
+async function askCompass(){
+  try {
+    if (COMPASS.needPerm) { const r = await DeviceOrientationEvent.requestPermission(); if (r === 'denied') { COMPASS.denied = true; render(); return; } }
+    COMPASS.granted = true; startCompass();
+  } catch(e) { COMPASS.denied = true; }
+  render();
+}
+startCompass(); // 신호는 권한이 있을 때만 들어와요 (안드로이드는 바로, 아이폰은 허용 후)
+function compassCard(s){
+  if (!s.radarSightOn) return '';
+  if (COMPASS.heading != null) return '';
+  if (COMPASS.needPerm && !COMPASS.granted) return '<div class="card" style="display:flex;flex-direction:column;gap:10px;border:2px solid var(--blue)"><b>시야 레이더용 나침반 허용</b><div class="sub small">' + cw() + '가 되면 폰을 비춘 방향으로 찾아요. 아이폰은 나침반을 따로 허용해야 해요.</div><button class="big blue" data-act="compass" style="min-height:52px;font-size:17px">나침반 허용하기</button></div>';
+  if (COMPASS.denied) return '<div class="warnbox">나침반이 막혀 있어요. 시야 레이더는 안 되고 범위 레이더만 써요.</div>';
+  return '<div class="warnbox">나침반 신호를 기다리는 중이에요. 폰을 8자로 한두 번 돌려 보세요. (시야 레이더용)</div>';
+}
+
+// ===================== 레이더 (잡는 쪽) =====================
+function radarState(){
+  const st = C.st, m = me(); if (!st || !m || st.phase !== 'playing' || !m.radar) return null;
+  const s = st.settings, now = Date.now();
+  const active = !s.radarCooldown || now < (C.radarUntil || 0);
+  const coolLeft = s.radarCooldown && !active ? Math.max(0, ((C.radarUntil || 0) + s.radarCooldown * 1000 - now) / 1000) : 0;
+  let range = 0, sight = 0;
+  if (active && s.radarRangeOn) m.radar.forEach(t => { if (t.d <= s.radarRangeDist) range = Math.max(range, 1 - t.d / s.radarRangeDist); });
+  const sightUsable = s.radarSightOn && !C.locked && COMPASS.heading != null;
+  if (active && sightUsable) {
+    const half = s.radarSightAngle / 2;
+    m.radar.forEach(t => {
+      if (t.d > s.radarSightDist) return;
+      const dd = Math.abs(((t.b - COMPASS.heading + 540) % 360) - 180);
+      if (dd > half) return; // 시야각 밖이면 아예 소리 없음
+      sight = Math.max(sight, 0.5 * (1 - dd / half) + 0.5 * (1 - t.d / s.radarSightDist));
+    });
+  }
+  return { s, active, coolLeft, range, sight, sightUsable };
+}
+function tone(f, dur, vol, at){
+  if (!audio) return;
+  try { const t = at || audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'square'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + dur + 0.02); } catch(e){}
+}
+(function rangeLoop(){
+  const R = radarState(); let wait = 300;
+  if (R && R.range > 0) { if (C.sound && audio) tone(620, 0.09, 0.05 + 0.4 * R.range); buzz(30); wait = 1200 - 950 * R.range; }
+  setTimeout(rangeLoop, wait);
+})();
+(function sightLoop(){
+  const R = radarState(); let wait = 200;
+  if (R && R.sight > 0) { if (C.sound && audio) { const t = audio.currentTime, v = 0.05 + 0.4 * R.sight; tone(1500, 0.05, v, t); tone(1850, 0.05, v, t + 0.07); } wait = 1000 - 800 * R.sight; }
+  setTimeout(sightLoop, wait);
+})();
+function bars(level, cls){ const n = Math.round(level * 5); let h = '<div class="bars ' + cls + '">'; for (let i = 0; i < 5; i++) h += '<i class="' + (i < n ? 'on' : '') + '"></i>'; return h + '</div>'; }
+function radarPanel(){
+  const R = radarState(); if (!R) return '';
+  const s = R.s;
+  let h = '<div class="radar">';
+  if (s.radarRangeOn) h += '<div class="rrow"><span class="l">범위</span>' + bars(R.range, 'range') + '</div>';
+  if (s.radarSightOn) h += '<div class="rrow"><span class="l">시야</span>' + (C.locked ? '<span class="sub small">잠금 중엔 꺼져요</span>' : COMPASS.heading == null ? (COMPASS.needPerm && !COMPASS.granted ? '<button class="chipbtn" data-act="compass" style="min-height:34px">나침반 허용</button>' : '<span class="sub small">나침반 신호 없음 · 폰을 8자로 돌려 보세요</span>') : bars(R.sight, 'sight')) + '</div>';
+  if (s.radarSightOn && COMPASS.heading != null && !C.locked) h += '<div class="sub small" style="text-align:center">폰을 세워 들고 앞을 비춰보세요</div>';
+  if (s.radarCooldown > 0) h += R.active ? '<div class="sub small" style="text-align:center;color:#1F6B2A;font-weight:700">레이더 작동 중 · ' + Math.ceil(((C.radarUntil || 0) - Date.now()) / 1000) + '초</div>'
+    : R.coolLeft > 0 ? '<div class="sub small" style="text-align:center">레이더 쉬는 중 · ' + Math.ceil(R.coolLeft) + '초</div>'
+    : '<button class="mid" data-act="radarGo" style="min-height:44px">레이더 켜기 (' + s.radarActive + '초)</button>';
+  return h + '</div>';
+}
+// 지도 위 내 범위 원·시야 부채꼴
+function drawRadarShapes(){
+  const map = C.gmap, st = C.st, m = me();
+  const want = map && C.screen === 'game' && st && st.phase === 'playing' && m && m.role === 'chaser' && m.state === 'alive' && C.pos;
+  const s = st && st.settings;
+  if (!want || !s.radarRangeOn) { if (C.rangeCircle) { C.rangeCircle.remove(); C.rangeCircle = null; } }
+  else {
+    const ll = [C.pos.lat, C.pos.lng];
+    if (!C.rangeCircle || C.rangeCircle._map !== map) C.rangeCircle = L.circle(ll, { radius:s.radarRangeDist, color:'#E8590C', weight:1.5, dashArray:'4 6', fillOpacity:0.04, interactive:false }).addTo(map);
+    else { C.rangeCircle.setLatLng(ll); C.rangeCircle.setRadius(s.radarRangeDist); }
+  }
+  if (!want || !s.radarSightOn || COMPASS.heading == null) { if (C.cone) { C.cone.remove(); C.cone = null; } return; }
+  const half = s.radarSightAngle / 2, R = s.radarSightDist, lat = C.pos.lat, lng = C.pos.lng;
+  const kLat = 1 / 111320, kLng = 1 / (111320 * Math.cos(lat * Math.PI / 180));
+  const pts = [[lat, lng]];
+  for (let a = -half; a <= half + 0.01; a += 5) { const br = (COMPASS.heading + a) * Math.PI / 180; pts.push([lat + Math.cos(br) * R * kLat, lng + Math.sin(br) * R * kLng]); }
+  const style = C.locked ? { color:'#9AA1AC', fillColor:'#9AA1AC' } : { color:'#1F6FEB', fillColor:'#1F6FEB' };
+  if (!C.cone || C.cone._map !== map) C.cone = L.polygon(pts, Object.assign({ weight:1.5, fillOpacity:0.15, interactive:false }, style)).addTo(map);
+  else { C.cone.setLatLngs(pts); C.cone.setStyle(style); }
+}
 
 // ===================== 경고음 반복 =====================
 let lastPhotoAlert = false;
