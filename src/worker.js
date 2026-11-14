@@ -40,28 +40,28 @@ const DEFAULTS = {
   revealC2R: 'interval', revealC2RSec: 30, revealR2C: 'hidden', revealR2CSec: 30, teamSee: true,
   catchDist: 30, boundaryAllow: 60, disconnectAllow: 60, autoOut: 180, transfer: false, transferCountdown: 10,
   rescueHold: 3, jailRadius: 20,
-  copsMajority: false, heartOn: false, heartDist: 50,
+  copsMajority: false,
   photoOn: false, photoEvery: 600, photoDeadline: 90, photoSenders: 'runners', photoViewers: 'chasers'
 };
 const NUM_LIMITS = {
   chaserCount: [1, 10], timeLimit: [60, 7200], hideTime: [0, 1800], winN: [1, 20], revealC2RSec: [3, 600], revealR2CSec: [3, 600],
   catchDist: [3, 200], boundaryAllow: [5, 600], disconnectAllow: [10, 600], autoOut: [60, 1800], transferCountdown: [0, 120], rescueHold: [1, 30],
-  jailRadius: [5, 100], heartDist: [10, 300], photoEvery: [60, 3600], photoDeadline: [15, 600]
+  jailRadius: [5, 100], photoEvery: [60, 3600], photoDeadline: [15, 600]
 };
 const ENUMS = {
   mode: ['tag', 'hide', 'cops', 'zombie'], winMode: ['all', 'n'], revealC2R: ['hidden', 'interval', 'always'],
   revealR2C: ['hidden', 'interval', 'always'], photoSenders: ['runners', 'all'], photoViewers: ['chasers', 'all']
 };
-const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority', 'heartOn'];
+const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority'];
 const TN = { tag: ['술래', '도망자'], hide: ['술래', '숨는 사람'], cops: ['경찰', '도둑'], zombie: ['좀비', '생존자'] };
 const LABELS = {
   mode: '모드', chaserCount: '잡는 쪽 인원', timeLimit: '제한 시간', hideTime: '숨는 시간', winMode: '승리 조건', winN: 'N명',
   revealC2R: '잡는 쪽 위치 보기', revealC2RSec: '잡는 쪽 보기 간격', revealR2C: '도망치는 쪽 위치 보기', revealR2CSec: '도망치는 쪽 보기 간격', teamSee: '같은 팀 위치 보기',
   catchDist: '잡기 거리', boundaryAllow: '이탈 허용 시간', disconnectAllow: '끊김 허용 시간', autoOut: '자동 탈락 시간', transfer: '술래 넘기기', transferCountdown: '넘긴 뒤 카운트다운',
-  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', heartOn: '심장 레이더', heartDist: '심장 레이더 거리', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
+  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
 };
 const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: 'N명', hidden: '안 보임', interval: 'N초마다', always: '항상', runners: '도망치는 쪽', chasers: '잡는 쪽', true: '켬', false: '끔' };
-const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', heartDist: 'm', photoEvery: '초', photoDeadline: '초' };
+const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', photoEvery: '초', photoDeadline: '초' };
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const IDLE_MS = 15 * 60 * 1000;
 
@@ -797,14 +797,8 @@ export class Room extends DurableObject {
       rescue: rt ? { inmates: rt.inmates.length, progress: v.rescueStart ? Math.min(1, (now - v.rescueStart) / (S.rescueHold * 1000)) : 0 } : null,
       jailIndex: v.jailId ? g.jails.findIndex(j => j.id === v.jailId) + 1 : 0,
       escort: null, busy: false, late: !!v.late,
-      protectLeft: v.protectUntil > now ? (v.protectUntil - now) / 1000 : 0,
-      heart: 0
+      protectLeft: v.protectUntil > now ? (v.protectUntil - now) / 1000 : 0
     };
-    // 심장 레이더: 술래가 가까울수록 1→3단계 (위치·방향은 안 알려줘요)
-    if (S.heartOn && near && v.connected) {
-      const d = near.d, R = S.heartDist;
-      me.heart = d <= R * 0.3 ? 3 : d <= R * 0.6 ? 2 : d <= R ? 1 : 0;
-    }
     // 연행 정보: 도둑은 따라갈 경찰 위치, 경찰은 데려갈 도둑과 감옥까지 거리
     const pairOf = v.state === 'escort' ? g.players.find(x => x.id === v.escortBy) : this.escortOf(v);
     if (pairOf) {
