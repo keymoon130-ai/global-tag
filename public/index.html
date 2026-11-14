@@ -114,6 +114,8 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:4px;vertical-align:-1px}
 .sr{position:absolute;left:-9999px}
 .ov.red{z-index:1001}
+.heart{position:fixed;inset:0;z-index:995;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(201,42,42,0);transition:box-shadow .12s ease-out}
+.heart.beat{box-shadow:inset 0 0 70px 26px rgba(201,42,42,.75);transition:none}
 .lockbtn{position:fixed;left:max(12px,calc(50vw - 228px));bottom:calc(env(safe-area-inset-bottom) + 190px);z-index:600;height:48px;padding:0 14px;border-radius:24px;border:0;background:#15171A;color:#fff;font-weight:700;font-size:15px;box-shadow:0 2px 10px rgba(21,23,26,.25);display:flex;align-items:center;gap:6px}
 .lock{position:fixed;inset:0;z-index:990;background:rgba(0,0,0,.94);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 40px) 24px calc(env(safe-area-inset-bottom) + 40px);text-align:center;touch-action:none;-webkit-user-select:none;user-select:none}
 .lock .big-t{font-size:64px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
@@ -131,6 +133,7 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 <div id="app"></div>
 <div id="net"></div>
 <div id="lockOv"></div>
+<div class="heart" id="heartFx" aria-hidden="true"></div>
 <div class="toasts" id="toasts"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" class="sr" aria-hidden="true" tabindex="-1">
 <script>
@@ -595,7 +598,9 @@ const SCHEMA = [
   ['rescueHold','구출 누르는 시간(초)','num'],
   ['jailRadius','감옥 반경(m)','num'],
   ['copsMajority','시간 끝날 때 과반 수감이면 경찰 승리','bool'],
-  ['h','사진 모드'],
+  ['h','추가 모드'],
+  ['heartOn','심장 레이더 (술래가 가까우면 두근두근)','bool'],
+  ['heartDist','└ 감지 거리(m)','num'],
   ['photoOn','사진 모드','bool'],
   ['photoEvery','└ 간격(초)','num'],
   ['photoDeadline','└ 보내는 제한 시간(초)','num'],
@@ -827,6 +832,7 @@ U.game = () => {
           (m.canReport ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
     } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
+    else if (m.heart > 0) b = '<div class="hint" style="color:#C92A2A;font-weight:700">' + (m.heart === 3 ? '바로 근처에 ' + cw() + '가 있어요!' : m.heart === 2 ? cw() + '가 가까워지고 있어요' : '어디선가 ' + cw() + '의 기척이 느껴져요') + '</div><div class="big gray">두근두근…</div>';
     else b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 오면 누를 수 있어요</div><div class="big gray"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#5B6270" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#5B6270" stroke-width="2"/></svg>근처에 ' + cw() + '가 없어요</div>';
   }
   setHTML($('#gBottom'), b);
@@ -880,7 +886,10 @@ function rulesList(st, m){
     cops: ['숨는 시간엔 경찰은 <b>눈 감고 제자리</b>에서 기다려요', '체포되면 <b>경찰을 따라 감옥까지</b> 가요 (탈출 불가)', '경찰은 감옥 바로 옆(30m 안)에서 <b>지키고 서 있지 않기</b>', '구출하다가 잡히면 <b>바로 신고</b>해요. 구출된 도둑은 10초 동안 안 잡혀요', '수감된 도둑은 감옥 원 안에 있어요. 감옥까지 걸어올 시간은 2분이에요'],
     zombie: ['숨는 시간엔 첫 좀비는 <b>눈 감고 제자리</b>에서 기다려요', '감염되면 <b>10초 뒤</b>에 좀비로 변해요. 그동안은 못 잡아요']
   };
-  return (by[mode] || []).concat(common);
+  const extra = [];
+  if (s.heartOn) extra.push('<b>심장 레이더:</b> ' + c + '가 ' + s.heartDist + 'm 안에 오면 ' + r + ' 폰이 두근거려요. 가까울수록 빨라지고, 위치·방향은 안 알려줘요');
+  if (s.photoOn) extra.push('<b>사진 모드:</b> ' + Math.round(s.photoEvery / 60) + '분마다 사진을 보내야 해요. 늦으면 위치가 공개돼요');
+  return (by[mode] || []).concat(extra, common);
 }
 function rulesSheet(st, m, ackAct){
   const items = rulesList(st, m);
@@ -1096,6 +1105,27 @@ function confirmLeave(){
 document.addEventListener('pointerdown', e => { if (!C.locked && e.target.closest('[data-hold="rescue"]')) { e.preventDefault(); C.holding = true; send({ type:'rescue', on:true }); } });
 const stopHold = () => { if (C.holding) { C.holding = false; send({ type:'rescue', on:false }); } };
 document.addEventListener('pointerup', stopHold); document.addEventListener('pointercancel', stopHold);
+
+// ===================== 심장 레이더 =====================
+function thump(t, f, v){
+  if (!audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.12);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+  o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + 0.18);
+}
+(function heartLoop(){
+  const m = me(), lv = m && C.st && C.st.phase === 'playing' ? (m.heart || 0) : 0;
+  let wait = 400;
+  if (lv > 0) {
+    // 두근(쿵-쿵): 가까울수록 빠르고 세게
+    if (C.sound && audio) { try { const t = audio.currentTime; thump(t, 70, 0.5 + lv * 0.15); thump(t + 0.18, 58, 0.35 + lv * 0.12); } catch(e){} }
+    buzz(lv === 3 ? [70, 90, 90] : [50, 110, 70]);
+    const fx = $('#heartFx'); if (fx) { fx.classList.add('beat'); setTimeout(() => fx.classList.remove('beat'), 160); }
+    wait = lv === 3 ? 420 : lv === 2 ? 650 : 1000;
+  }
+  setTimeout(heartLoop, wait);
+})();
 
 // ===================== 경고음 반복 =====================
 let lastPhotoAlert = false;
