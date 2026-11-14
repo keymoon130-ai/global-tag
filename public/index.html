@@ -317,8 +317,30 @@ function awakeCard(){
 }
 
 // ===================== 위치 =====================
+// 순간이동 거르기: 사람이 뛸 수 없는 속도로 움직인 위치는 GPS가 튄 걸로 보고 버려요
+const MAX_SPEED = 8;   // 초속 8m (시속 약 29km, 전력질주보다 빠름)
+const JUMP_SLACK = 10; // 기본 여유 10m
+function geoJump(lat, lng, acc, t){
+  const L0 = C.posRaw;
+  if (!L0) return false;
+  const dt = Math.max(0.5, (t - L0.t) / 1000);
+  const d = distLL(L0.lat, L0.lng, lat, lng);
+  if (d <= MAX_SPEED * dt + JUMP_SLACK) return false;
+  if (acc < L0.acc * 0.5) return false;           // 새 위치가 훨씬 정확하면 이전 값이 틀렸던 거예요
+  C.jumpSince = C.jumpSince || t;
+  if (t - C.jumpSince > 10000) return false;      // 10초 넘게 계속 그쪽이면 진짜 이동으로 인정
+  return true;
+}
+function distLL(a1, o1, a2, o2){
+  const R = 6371000, r = Math.PI / 180, dA = (a2 - a1) * r, dO = (o2 - o1) * r;
+  const h = Math.sin(dA / 2) ** 2 + Math.cos(a1 * r) * Math.cos(a2 * r) * Math.sin(dO / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 function onGeo(p){
-  C.pos = { lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy) };
+  const lat = p.coords.latitude, lng = p.coords.longitude, acc = Math.round(p.coords.accuracy), t = p.timestamp || Date.now();
+  if (geoJump(lat, lng, acc, t)) return;
+  C.jumpSince = 0; C.posRaw = { lat, lng, acc, t };
+  C.pos = { lat, lng, acc };
   C.geoErr = null; C.geoCode = 0; C.geoAsking = false; sendPos(false); render();
 }
 function onGeoErr(err){
