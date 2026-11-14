@@ -40,6 +40,7 @@ const DEFAULTS = {
   revealC2R: 'interval', revealC2RSec: 30, revealR2C: 'hidden', revealR2CSec: 30, teamSee: true,
   catchDist: 30, boundaryAllow: 60, disconnectAllow: 60, autoOut: 180, transfer: false, transferCountdown: 10,
   rescueHold: 3, jailRadius: 20,
+  copsMajority: false,
   photoOn: false, photoEvery: 600, photoDeadline: 90, photoSenders: 'runners', photoViewers: 'chasers'
 };
 const NUM_LIMITS = {
@@ -51,13 +52,13 @@ const ENUMS = {
   mode: ['tag', 'hide', 'cops', 'zombie'], winMode: ['all', 'n'], revealC2R: ['hidden', 'interval', 'always'],
   revealR2C: ['hidden', 'interval', 'always'], photoSenders: ['runners', 'all'], photoViewers: ['chasers', 'all']
 };
-const BOOLS = ['teamSee', 'transfer', 'photoOn'];
+const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority'];
 const TN = { tag: ['술래', '도망자'], hide: ['술래', '숨는 사람'], cops: ['경찰', '도둑'], zombie: ['좀비', '생존자'] };
 const LABELS = {
   mode: '모드', chaserCount: '잡는 쪽 인원', timeLimit: '제한 시간', hideTime: '숨는 시간', winMode: '승리 조건', winN: 'N명',
   revealC2R: '잡는 쪽 위치 보기', revealC2RSec: '잡는 쪽 보기 간격', revealR2C: '도망치는 쪽 위치 보기', revealR2CSec: '도망치는 쪽 보기 간격', teamSee: '같은 팀 위치 보기',
   catchDist: '잡기 거리', boundaryAllow: '이탈 허용 시간', disconnectAllow: '끊김 허용 시간', autoOut: '자동 탈락 시간', transfer: '술래 넘기기', transferCountdown: '넘긴 뒤 카운트다운',
-  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
+  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
 };
 const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: 'N명', hidden: '안 보임', interval: 'N초마다', always: '항상', runners: '도망치는 쪽', chasers: '잡는 쪽', true: '켬', false: '끔' };
 const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', photoEvery: '초', photoDeadline: '초' };
@@ -456,11 +457,11 @@ export class Room extends DurableObject {
       p.role = pick.includes(p) ? 'chaser' : 'runner';
       p.state = 'alive'; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.freezeUntil = 0;
       p.photoDueAt = null; p.publicByPhoto = false; p.publicByDisc = false; p.trail = []; p.rescueStart = null; p.outReason = ''; p.escortBy = null; p.escorting = null;
-      p.outCand = null; p.jailCand = null; p.protectUntil = 0; p.late = false;
+      p.outCand = null; p.jailCand = null; p.protectUntil = 0; p.late = false; p.jailGraceUntil = 0;
       if (!p.connected && p.discAt == null) p.discAt = now;
     });
     this.clearPhotos(); g.vote = null;
-    g.reports = []; g.catchCount = 0; g.winner = null; g.winReason = '';
+    g.reports = []; g.catchCount = 0; g.winner = null; g.winReason = ''; g.lastChaser = null;
     g.phase = 'hiding'; g.hideEndsAt = now + S.hideTime * 1000; g.endsAt = 0;
     g.players.forEach(p => this.toast(p, p.role === 'chaser'
       ? '나는 ' + TN[S.mode][0] + '! 숨는 시간 동안 기다려요'
@@ -545,8 +546,8 @@ export class Room extends DurableObject {
         this.toastAll(chaser.name + '님이 ' + p.name + '님을 연행 중이에요', p.id);
       } else this.setOut(p, '체포');
     } else if (S.mode === 'zombie') {
-      p.role = 'chaser'; p.state = 'alive';
-      this.toast(p, '좀비가 됐어요! 이제 생존자를 잡아요');
+      p.role = 'chaser'; p.state = 'alive'; p.freezeUntil = Date.now() + 10000; // 10초 동안 좀비로 변하는 중 (못 잡음)
+      this.toast(p, '감염됐어요! 10초 뒤 좀비로 변해서 생존자를 잡을 수 있어요');
       this.toastAll(p.name + '님이 감염됐어요', p.id);
     } else if (S.transfer) {
       p.role = 'chaser'; p.state = 'alive'; p.freezeUntil = Date.now() + S.transferCountdown * 1000;
@@ -585,6 +586,7 @@ export class Room extends DurableObject {
   }
   jailNow(c, t, j) {
     t.state = 'jailed'; t.jailId = j.id; t.escortBy = null; t.jailOutAt = null; t.outsideAt = null;
+    t.jailGraceUntil = Date.now() + 120000; // 경찰보다 늦게 도착해도 2분은 걸어올 시간을 줘요
     c.escorting = null;
     const idx = this.g.jails.indexOf(j) + 1;
     this.toast(t, '감옥 ' + idx + '에 갇혔어요. 동료가 구출하러 올 때까지 원 안에 있어요');
@@ -625,7 +627,7 @@ export class Room extends DurableObject {
     g.phase = 'ended'; g.winner = win; g.winReason = reason;
     g.players.forEach(p => { p.rescueStart = null; p.photoDueAt = null; });
     const tn = TN[g.settings.mode];
-    g.players.forEach(p => this.toast(p, '게임 끝! ' + (win === 'chaser' ? tn[0] : tn[1]) + ' 팀 승리 · ' + reason));
+    g.players.forEach(p => this.toast(p, g.lastChaser ? '게임 끝! ' + reason : '게임 끝! ' + (win === 'chaser' ? tn[0] : tn[1]) + ' 팀 승리 · ' + reason));
     this.changed(true);
   }
   checkWin() {
@@ -653,7 +655,19 @@ export class Room extends DurableObject {
       if (!alive.length) return this.endGame('chaser', rw + '를 모두 잡았어요');
       if (N && g.catchCount >= N) return this.endGame('chaser', N + '명을 잡았어요');
     }
-    if (Date.now() >= g.endsAt) this.endGame('runner', '제한 시간까지 버텼어요');
+    if (Date.now() >= g.endsAt) {
+      if (S.mode === 'cops' && S.copsMajority) {
+        const thieves = runners.filter(p => p.state !== 'out');
+        const caught = thieves.filter(p => p.state === 'jailed' || p.state === 'escort').length;
+        if (thieves.length && caught * 2 > thieves.length) return this.endGame('chaser', '시간 종료 · 도둑 과반(' + caught + '/' + thieves.length + '명)이 잡혀 있어요');
+      }
+      if (S.transfer && (S.mode === 'tag' || S.mode === 'hide')) {
+        const last = g.players.filter(p => p.role === 'chaser').map(p => p.name).join(', ');
+        g.lastChaser = last;
+        return this.endGame('runner', '시간 종료 · 마지막 술래 ' + last + '님 패배');
+      }
+      this.endGame('runner', '제한 시간까지 버텼어요');
+    }
   }
 
   // ---------------- 매초 처리 ----------------
@@ -698,6 +712,8 @@ export class Room extends DurableObject {
           if (p.state === 'jailed') {
             const j = g.jails.find(x => x.id === p.jailId);
             if (!j) { p.state = 'alive'; p.jailId = null; }
+            else if (distM(p, j) <= S.jailRadius + EDGE_MARGIN) { p.jailGraceUntil = 0; p.jailCand = null; if (p.jailOutAt != null) { p.jailOutAt = null; this.toast(p, '감옥 안으로 돌아왔어요'); } }
+            else if (p.jailGraceUntil > now) { /* 감옥까지 걸어오는 중 */ }
             else if (distM(p, j) > S.jailRadius + EDGE_MARGIN) {
               if (p.jailCand == null) p.jailCand = now;
               if (p.jailOutAt == null) { if (now - p.jailCand >= CONFIRM_MS) p.jailOutAt = now; }
@@ -733,7 +749,7 @@ export class Room extends DurableObject {
         const rt = this.rescueTarget(p);
         if (!rt) { p.rescueStart = null; return; }
         if (now - p.rescueStart >= S.rescueHold * 1000) {
-          rt.inmates.forEach(q => { q.state = 'alive'; q.jailId = null; q.jailOutAt = null; this.toast(q, p.name + '님이 구출했어요! 도망쳐요'); });
+          rt.inmates.forEach(q => { q.state = 'alive'; q.jailId = null; q.jailOutAt = null; q.jailCand = null; q.protectUntil = now + 10000; this.toast(q, p.name + '님이 구출했어요! 10초 동안은 안 잡혀요. 도망쳐요'); });
           this.toast(p, '도둑 ' + rt.inmates.length + '명을 구출했어요!');
           this.toastWhere(c => c.role === 'chaser', '감옥이 털렸어요! ' + rt.inmates.length + '명 탈출');
           p.rescueStart = null;
@@ -810,7 +826,7 @@ export class Room extends DurableObject {
       reports: v.role === 'chaser' && v.state !== 'out' && playing ? g.reports.map(r => { const p = g.players.find(x => x.id === r.from); return p ? { id: r.id, name: p.name, dist: Math.round(distM(v, p.connected ? p : (p.known || p))) } : null; }).filter(Boolean) : [],
       album: this.canViewPhotos(v) || g.phase === 'ended' ? g.album : [],
       canViewPhotos: this.canViewPhotos(v),
-      winner: g.winner, winReason: g.winReason
+      winner: g.winner, winReason: g.winReason, lastChaser: g.lastChaser || null
     };
     if (g.phase === 'ended') out.trails = g.players.map(p => ({ name: p.name, role: p.role, state: p.state, pts: p.trail.map(t => [t[0], t[1]]) }));
     return out;

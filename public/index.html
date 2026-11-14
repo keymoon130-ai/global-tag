@@ -594,6 +594,7 @@ const SCHEMA = [
   ['h','경찰과 도둑'],
   ['rescueHold','구출 누르는 시간(초)','num'],
   ['jailRadius','감옥 반경(m)','num'],
+  ['copsMajority','시간 끝날 때 과반 수감이면 경찰 승리','bool'],
   ['h','사진 모드'],
   ['photoOn','사진 모드','bool'],
   ['photoEvery','└ 간격(초)','num'],
@@ -612,7 +613,8 @@ function settingsSheet(){
     else f += '<input type="checkbox" id="' + id + '" data-k="' + r[0] + '" style="width:24px;height:24px;justify-self:start">';
   });
   f += '</div>';
-  return '<div class="sheet"><div class="in"><h3>게임 설정</h3><div class="sub small" style="text-align:center">시간은 초, 거리는 미터 단위예요</div>' + f + '<div class="row"><button class="mid" data-act="settingsClose" style="flex:1">취소</button><button class="big blue" data-act="settingsSave" style="flex:2">저장</button></div></div></div>';
+  const n = C.st ? C.st.players.length : 0, rec = Math.max(1, Math.round(n / 4));
+  return '<div class="sheet"><div class="in"><h3>게임 설정</h3><div class="sub small" style="text-align:center">시간은 초, 거리는 미터 단위예요<br>참가자 ' + n + '명이면 잡는 쪽 ' + rec + '명을 추천해요 (4명당 1명)</div>' + f + '<div class="row"><button class="mid" data-act="settingsClose" style="flex:1">취소</button><button class="big blue" data-act="settingsSave" style="flex:2">저장</button></div></div></div>';
 }
 // 모드를 바꾸면 그 모드에 맞는 기본값으로 채워요
 const MODE_DEFAULTS = {
@@ -823,7 +825,7 @@ U.game = () => {
       b = '<div class="hint">감옥에 ' + m.rescue.inmates + '명 갇혀 있어요 · 버튼을 ' + s.rescueHold + '초 동안 꾹 누르세요</div><div class="progress"><i id="rescueBar" style="width:0%"></i></div>' +
           '<button class="big blue holdbtn" data-hold="rescue">구출하기 (꾹 누르기)</button>' +
           (m.canReport ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
-    } else if (m.protectLeft > 0) b = '<div class="hint">술래를 넘겨줬어요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
+    } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
     else b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 오면 누를 수 있어요</div><div class="big gray"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#5B6270" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#5B6270" stroke-width="2"/></svg>근처에 ' + cw() + '가 없어요</div>';
   }
@@ -833,11 +835,11 @@ U.game = () => {
   // 오버레이
   let ov = '';
   const akey = st.code + ':' + st.hideEndsAt;
-  if (C.awakeAck !== akey && m.state !== 'out') ov += '<div class="sheet" style="z-index:990"><div class="in" style="text-align:center"><svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true" style="margin:0 auto"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#1F6FEB" stroke-width="2"/><path d="M10 18h4" stroke="#1F6FEB" stroke-width="2" stroke-linecap="round"/></svg>' +
-    '<h3>화면을 켠 채로 주머니에 넣으세요</h3><div class="sub" style="font-size:16px">화면을 잠그거나 다른 앱으로 가면 위치가 끊겨요.<br>' + s.disconnectAllow + '초가 지나면 내 위치가 모두에게 공개돼요.</div>' +
-    (m.push ? '<div class="small" style="color:#1F6B2A;font-weight:700">알림이 켜져 있어서 화면이 꺼지면 바로 알려줘요</div>' : '') +
-    '<button class="big blue" data-act="awakeOk">알겠어요</button></div></div>';
-  if (hiding && m.role === 'chaser') ov += '<div class="ov dark"><h2>눈 감고 기다려요</h2><div class="count">' + fmt(left) + '</div><p>' + rw() + '들이 숨는 중이에요</p></div>';
+  // 게임 시작(숨는 시간)에 규칙·주의사항을 한 번 보여줘요. 참가자 목록의 '규칙 보기'로 다시 볼 수 있어요
+  if (C.awakeAck !== akey && m.state !== 'out' && !(hiding && m.role === 'chaser')) ov += rulesSheet(st, m, 'awakeOk');
+  else if (C.rulesOpen) ov += rulesSheet(st, m, 'rulesClose');
+  if (hiding && m.role === 'chaser') { C.awakeAck = akey; ov += '<div class="ov dark" style="justify-content:flex-start;padding-top:calc(env(safe-area-inset-top) + 200px);overflow:auto"><h2>눈 감고 기다려요</h2><div class="count">' + fmt(left) + '</div><p>' + rw() + '들이 숨는 중이에요 · 제자리에서 기다려요</p>' +
+    '<div style="text-align:left;background:rgba(255,255,255,.08);border-radius:16px;padding:14px 16px;max-width:440px;width:100%"><div style="font-weight:900;margin-bottom:6px">' + MODE_NAME[s.mode] + ' 규칙 · 주의사항</div><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.5">' + rulesList(st, m).map(t => '<li>' + t + '</li>').join('') + '</ol></div></div>'; }
   if (!hiding && m.freezeLeft > 0) ov += '<div class="ov dark"><h2>' + cw() + '가 됐어요!</h2><div class="count">' + fmt(m.freezeLeft) + '</div><p>카운트다운이 끝나면 출발해요</p></div>';
   if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>정말 잡혔나요?</h3><div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
   else C.askReport = false;
@@ -863,6 +865,31 @@ function albumSheet(album){
   return '<div class="sheet"><div class="in"><h3>사진 ' + album.length + '장</h3>' + (album.length ? '<div class="album">' + items + '</div>' : '<div class="sub" style="text-align:center">아직 받은 사진이 없어요</div>') + '<button class="big dark" data-act="albumClose">닫기</button></div></div>';
 }
 
+// 규칙·주의사항 (친구들 양심을 믿고 문구로 안내해요)
+function rulesList(st, m){
+  const s = st.settings, c = cw(), r = rw(), mode = s.mode;
+  const common = [
+    '<b>게임 중에는 폰 화면을 켜 두세요.</b> 끄면 ' + s.disconnectAllow + '초 뒤 위치가 공개되고, ' + Math.round(s.autoOut / 60) + '분이면 탈락해요. 주머니 오작동은 <b>주머니 잠금</b>으로 막아요',
+    '<b>잡히면 바로 "잡혔어요"를 눌러요.</b> 미루지 않기!',
+    '경기장(파란 점선) 밖으로 일부러 나가지 않기',
+    '뛸 때 <b>차도·계단·사람</b> 조심. 다치면 바로 말하고 멈춰요'
+  ];
+  const by = {
+    tag: ['숨는 시간엔 ' + c + '는 <b>눈 감고 제자리</b>에서 기다려요'].concat(s.transfer ? ['잡힌 사람이 새 ' + c + '가 돼요. ' + s.transferCountdown + '초 카운트다운 동안은 못 잡고, 넘겨준 사람은 ' + s.transferCountdown + '초 동안 안 잡혀요', '시간이 끝날 때 ' + c + '인 사람이 져요'] : []),
+    hide: ['숨는 시간엔 ' + c + '는 <b>눈 감고 제자리</b>에서 기다려요', '숨은 뒤에는 <b>되도록 움직이지 않기</b>. 숨바꼭질이니까요'].concat(s.transfer ? ['잡힌 사람이 새 ' + c + '가 돼요. 시간이 끝날 때 ' + c + '인 사람이 져요'] : []),
+    cops: ['숨는 시간엔 경찰은 <b>눈 감고 제자리</b>에서 기다려요', '체포되면 <b>경찰을 따라 감옥까지</b> 가요 (탈출 불가)', '경찰은 감옥 바로 옆(30m 안)에서 <b>지키고 서 있지 않기</b>', '구출하다가 잡히면 <b>바로 신고</b>해요. 구출된 도둑은 10초 동안 안 잡혀요', '수감된 도둑은 감옥 원 안에 있어요. 감옥까지 걸어올 시간은 2분이에요'],
+    zombie: ['숨는 시간엔 첫 좀비는 <b>눈 감고 제자리</b>에서 기다려요', '감염되면 <b>10초 뒤</b>에 좀비로 변해요. 그동안은 못 잡아요']
+  };
+  return (by[mode] || []).concat(common);
+}
+function rulesSheet(st, m, ackAct){
+  const items = rulesList(st, m);
+  return '<div class="sheet" style="z-index:990"><div class="in"><h3>' + MODE_NAME[st.settings.mode] + ' 규칙 · 주의사항</h3>' +
+    '<div class="sub" style="text-align:center">나는 <b>' + (m.state === 'out' ? '관전' : (m.role === 'chaser' ? cw() : rw())) + '</b>예요' + (m.push ? ' · 알림 켜짐' : '') + '</div>' +
+    '<ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:15px;line-height:1.5">' + items.map(t => '<li>' + t + '</li>').join('') + '</ol>' +
+    '<button class="big blue" data-act="' + ackAct + '">알겠어요</button></div></div>';
+}
+
 // 참가자 목록 (방장은 탈락 투표를 열 수 있어요)
 function playersSheet(st, m){
   const rows = st.players.filter(p => !p.late).map(p => {
@@ -872,7 +899,7 @@ function playersSheet(st, m){
     return '<div class="item"><div class="av">' + esc(p.name.charAt(0)) + '</div><div style="flex:1;min-width:0"><div style="font-weight:700">' + esc(p.name) + (p.host ? ' · 방장' : '') + '</div><div class="sub small">' + (p.role === 'chaser' ? cw() : rw()) + ' · ' + stTxt + '</div></div>' + conn +
       (canKick ? '<button class="chipbtn" data-act="kickAsk" data-id="' + p.id + '" style="min-height:40px;padding:0 10px">탈락 투표</button>' : '') + '</div>';
   }).join('');
-  return '<div class="sheet"><div class="in"><h3>참가자</h3>' + (m.host ? '<div class="sub small" style="text-align:center">연결이 ' + Math.round(st.settings.autoOut / 60) + '분 넘게 끊긴 사람은 자동으로 탈락해요. 그 전에 빼야 하면 탈락 투표를 열어요.</div>' : '') + '<div class="list">' + rows + '</div><button class="big dark" data-act="playersClose">닫기</button><button class="link" data-act="leave" style="align-self:center">게임 나가기</button></div></div>';
+  return '<div class="sheet"><div class="in"><h3>참가자</h3>' + (m.host ? '<div class="sub small" style="text-align:center">연결이 ' + Math.round(st.settings.autoOut / 60) + '분 넘게 끊긴 사람은 자동으로 탈락해요. 그 전에 빼야 하면 탈락 투표를 열어요.</div>' : '') + '<div class="list">' + rows + '</div><button class="mid" data-act="rulesOpen">규칙 보기</button><button class="big dark" data-act="playersClose">닫기</button><button class="link" data-act="leave" style="align-self:center">게임 나가기</button></div></div>';
 }
 function voteSheet(v){
   const status = '찬성 ' + v.yes + ' · 반대 ' + v.no + ' / ' + v.total + '명 (찬성 ' + v.need + '명이면 탈락) · 남은 ' + Math.ceil(v.left) + '초';
@@ -960,7 +987,8 @@ function drawTrails(frac){
 }
 U.result = () => {
   const st = C.st, m = me(), win = st.winner;
-  setHTML($('#rHead'), '<div class="sub">게임 끝</div><h1 style="font-size:34px;color:' + (win === 'chaser' ? 'var(--orange-ink)' : 'var(--blue-ink)') + '">' + (win === 'chaser' ? cw() : rw()) + ' 팀 승리</h1><div style="margin-top:4px">' + esc(st.winReason) + '</div><div class="sub" style="margin-top:4px">' + (m.role === win ? '내가 이긴 팀이에요!' : '다음 판엔 이겨봐요') + '</div>');
+  if (st.lastChaser) { setHTML($('#rHead'), '<div class="sub">게임 끝</div><h1 style="font-size:32px;color:var(--orange-ink)">' + esc(st.lastChaser) + '님 패배</h1><div style="margin-top:4px">마지막까지 ' + cw() + '였어요</div><div class="sub" style="margin-top:4px">' + (m.role === 'chaser' ? '다음 판엔 넘겨봐요!' : '살아남았어요!') + '</div>'); }
+  else setHTML($('#rHead'), '<div class="sub">게임 끝</div><h1 style="font-size:34px;color:' + (win === 'chaser' ? 'var(--orange-ink)' : 'var(--blue-ink)') + '">' + (win === 'chaser' ? cw() : rw()) + ' 팀 승리</h1><div style="margin-top:4px">' + esc(st.winReason) + '</div><div class="sub" style="margin-top:4px">' + (m.role === win ? '내가 이긴 팀이에요!' : '다음 판엔 이겨봐요') + '</div>');
   setHTML($('#rAlbum'), st.album.length ? '<div class="card"><b>사진 앨범</b><div class="album" style="margin-top:8px">' + st.album.map(a => {
     if (!C.photos[a.id] && !C.photoAsked[a.id]) { C.photoAsked[a.id] = 1; send({ type:'photoGet', id:a.id }); }
     return '<figure>' + (C.photos[a.id] ? '<img src="' + esc(C.photos[a.id]) + '" alt="' + esc(a.from) + '님이 보낸 사진">' : '') + '<figcaption>' + esc(a.from) + '</figcaption></figure>';
@@ -1030,6 +1058,8 @@ document.addEventListener('click', e => {
     case 'jailNow': send({ type:'jailNow' }); break;
     case 'lock': C.locked = true; C.unlockP = 0; keepAwake(); render(); break;
     case 'players': C.playersOpen = true; render(); break;
+    case 'rulesOpen': C.rulesOpen = true; C.playersOpen = false; render(); break;
+    case 'rulesClose': C.rulesOpen = false; render(); break;
     case 'playersClose': C.playersOpen = false; render(); break;
     case 'kickAsk': C.kickAsk = a.dataset.id; C.playersOpen = false; render(); break;
     case 'kickNo': C.kickAsk = null; render(); break;
