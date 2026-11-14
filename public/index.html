@@ -114,6 +114,8 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .unit input[type=number]{width:64px;text-align:right}
 .tm input[type=number]{width:52px}
 .leaflet-container{isolation:isolate}
+.qr{width:min(260px,70vw);aspect-ratio:1;background:#fff;border-radius:16px;padding:8px;border:2px solid #EEF0F3}
+.qr svg{width:100%;height:100%;display:block}
 .etop{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 10px);z-index:600;box-shadow:0 4px 16px rgba(21,23,26,.14)}
 .ebottom{position:fixed;left:50%;transform:translateX(-50%);width:min(480px,100vw);bottom:0;z-index:600;background:#fff;border-radius:24px 24px 0 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:10px;box-shadow:0 -4px 20px rgba(21,23,26,.12)}
 .tk{position:relative}
@@ -604,11 +606,28 @@ U.lobby = () => {
     else act += '<button class="big blue" data-act="start">게임 시작</button>';
   } else act += '<div class="big gray" style="font-weight:500;font-size:16px">방장이 시작하길 기다리는 중…</div>';
   setHTML($('#lActions'), act);
-  setHTML($('#lOv'), (C.settingsOpen && m.host ? settingsSheet() : '') + (C.bigMap ? '<div class="sheet" style="background:#E6EBEF;justify-content:stretch"><div id="bigmap" style="position:absolute;inset:0"></div><div class="etop card"><b>' + ($('#lAreaTag').textContent) + '</b><div class="sub small">파란 점선 안에서만 움직여요' + (s.mode === 'cops' ? ' · 회색 원이 감옥이에요' : '') + '</div></div><div class="ebottom"><button class="big blue" data-act="bigmapClose">확인했어요</button></div></div>' : ''));
+  setHTML($('#lOv'), (C.qrOpen ? qrSheet() : '') + (C.settingsOpen && m.host ? settingsSheet() : '') + (C.bigMap ? '<div class="sheet" style="background:#E6EBEF;justify-content:stretch"><div id="bigmap" style="position:absolute;inset:0"></div><div class="etop card"><b>' + ($('#lAreaTag').textContent) + '</b><div class="sub small">파란 점선 안에서만 움직여요' + (s.mode === 'cops' ? ' · 회색 원이 감옥이에요' : '') + '</div></div><div class="ebottom"><button class="big blue" data-act="bigmapClose">확인했어요</button></div></div>' : ''));
   if (C.bigMap && !C.bigMapObj) { const bm = makeMap($('#bigmap'), true); C.bigMapObj = bm; C.bigVer = -1; maps.push(bm); bm.fitBounds(areaBounds(), { paddingTopLeft:[16,90], paddingBottomRight:[16,110] }); }
   if (C.bigMapObj && C.bigVer !== C.stVer) { C.bigVer = C.stVer; const lay2 = C.bigMapObj._lay; lay2.clearLayers(); drawArea(lay2, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay2, st.tokens); }
   if (C.settingsOpen && m.host) { if (!C.settingsFilled) fillSettings(); else applyForm(); }
 };
+
+// 초대 QR: 모여 있는 친구들이 카메라로 찍으면 바로 들어와요 (qrcode.js는 처음 열 때만 불러요)
+function loadQR(){
+  if (window.qrcode || C.qrLoading) return;
+  C.qrLoading = true;
+  const sc = document.createElement('script'); sc.src = '/qrcode.js';
+  sc.onload = () => render(); sc.onerror = () => { C.qrLoading = false; render(); };
+  document.head.appendChild(sc);
+}
+function qrSheet(){
+  const url = location.origin + '/?room=' + C.st.code;
+  let img = '<div class="sub" style="height:260px;display:flex;align-items:center;justify-content:center">QR 만드는 중…</div>';
+  if (window.qrcode) { const q = qrcode(0, 'M'); q.addData(url); q.make(); img = '<div class="qr">' + q.createSvgTag({ cellSize:8, margin:2, scalable:true, alt:'방 ' + C.st.code + ' 입장 QR 코드' }) + '</div>'; }
+  return '<div class="sheet"><div class="in" style="align-items:center;text-align:center"><h3>카메라로 찍으면 들어와요</h3>' + img +
+    '<div class="sub small">방 코드</div><div style="font-size:40px;font-weight:900;letter-spacing:8px;margin-top:-8px">' + esc(C.st.code) + '</div>' +
+    '<button class="mid" data-act="shareLink">링크로 보내기</button><button class="big dark" data-act="qrClose">닫기</button></div></div>';
+}
 
 // 방장 설정 — 기본 5개만 보이고, 나머지는 "자세히 설정"에 접혀 있어요
 // {C} = 잡는 쪽 이름, {R} = 도망치는 쪽 이름 (모드마다 바뀌어요: 술래/경찰/좀비 …)
@@ -917,10 +936,10 @@ U.game = () => {
       // 버튼은 그대로 두고 진행 막대만 바꿔요 (누르는 중에 버튼이 바뀌면 터치가 끊겨요)
       b = '<div class="hint">감옥에 ' + m.rescue.inmates + '명 갇혀 있어요 · 버튼을 ' + dur(s.rescueHold) + ' 동안 꾹 누르세요</div><div class="progress"><i id="rescueBar" style="width:0%"></i></div>' +
           '<button class="big blue holdbtn" data-hold="rescue">구출하기 (꾹 누르기)</button>' +
-          (m.canReport ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
+          (m.reportable ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
     } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
-    else b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 오면 누를 수 있어요</div><div class="big gray"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#5B6270" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#5B6270" stroke-width="2"/></svg>근처에 ' + cw() + '가 없어요</div>';
+    else b = '<div class="hint">근처에 ' + cw() + '가 없어요' + (m.nearDist != null ? ' · 가장 가까운 ' + cw() + ' 약 ' + m.nearDist + 'm' : '') + '</div><button class="mid" data-act="report">잡혔어요</button>';
   }
   if (!hiding && m.role === 'chaser' && m.state === 'alive' && m.radar) b = radarPanel() + b;
   setHTML($('#gBottom'), b);
@@ -936,7 +955,9 @@ U.game = () => {
   if (hiding && m.role === 'chaser') { C.awakeAck = akey; ov += '<div class="ov dark" style="justify-content:flex-start;padding-top:calc(env(safe-area-inset-top) + 200px);overflow:auto"><h2>눈 감고 기다려요</h2><div class="count">' + fmt(left) + '</div><p>' + rw() + '들이 숨는 중이에요 · 제자리에서 기다려요</p>' +
     '<div style="text-align:left;background:rgba(255,255,255,.08);border-radius:16px;padding:14px 16px;max-width:440px;width:100%"><div style="font-weight:900;margin-bottom:6px">' + MODE_NAME[s.mode] + ' 규칙 · 주의사항</div><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.5">' + rulesList(st, m).map(t => '<li>' + t + '</li>').join('') + '</ol></div></div>'; }
   if (!hiding && m.freezeLeft > 0) ov += '<div class="ov dark"><h2>' + cw() + '가 됐어요!</h2><div class="count">' + fmt(m.freezeLeft) + '</div><p>카운트다운이 끝나면 출발해요</p></div>';
-  if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>정말 잡혔나요?</h3><div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
+  if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>' + (m.canReport ? '정말 잡혔나요?' : '잡혔나요?') + '</h3>' +
+    (m.canReport ? '' : '<div class="warnbox" style="text-align:center">지도에서는 ' + cw() + '가 멀리 있는 걸로 나와요' + (m.nearDist != null ? ' (약 ' + m.nearDist + 'm)' : '') + '.<br>GPS 오차일 수 있으니, 진짜 잡혔으면 눌러 주세요</div>') +
+    '<div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
   else C.askReport = false;
   if (m.photoLeft != null) ov += '<div class="sheet"><div class="in"><h3>사진 보낼 시간이에요</h3><div style="font-size:48px;font-weight:900;color:var(--blue);text-align:center;font-variant-numeric:tabular-nums">' + fmt(m.photoLeft) + '</div><div class="sub" style="text-align:center">시간 안에 안 보내면 내 위치가 계속 공개돼요</div><button class="big blue" data-act="photo" id="photoBtn">' + (C.sending ? '보내는 중…' : '사진 찍어서 보내기') + '</button></div></div>';
   else if (m.publicByPhoto && m.state !== 'out') ov += '<div style="position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 160px);z-index:650;max-width:448px;margin:0 auto"><button class="mid" data-act="photo">' + (C.sending ? '보내는 중…' : '지금이라도 사진 보내기') + '</button></div>';
@@ -1102,7 +1123,9 @@ document.addEventListener('click', e => {
   const act = a.dataset.act, m = me();
   switch (act) {
     case 'leave': if (confirmLeave()) { send({ type:'leave' }); setTimeout(() => leaveRoom(false), 150); } break;
-    case 'share': {
+    case 'share': C.qrOpen = true; loadQR(); render(); break;
+    case 'qrClose': C.qrOpen = false; render(); break;
+    case 'shareLink': {
       const url = location.origin + '/?room=' + C.st.code;
       if (navigator.share) navigator.share({ title:'글로벌 술래잡기', text:'방 코드 ' + C.st.code + ' 로 들어와!', url }).catch(() => {});
       else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('초대 링크를 복사했어요'));

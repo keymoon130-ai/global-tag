@@ -516,9 +516,12 @@ export class Room extends DurableObject {
     });
     return best ? { c: best, d: bd } : null;
   }
+  // 신고는 언제든 할 수 있어요 (GPS 오차로 막히지 않게). 거리는 화면 안내용이에요
+  reportable(p) {
+    return this.g.phase === 'playing' && p.role === 'runner' && p.state === 'alive' && !(p.protectUntil > Date.now());
+  }
   canReport(p) {
-    if (this.g.phase !== 'playing' || p.role !== 'runner' || p.state !== 'alive') return false;
-    if (p.protectUntil > Date.now()) return false;
+    if (!this.reportable(p)) return false;
     const n = this.nearestChaser(p);
     if (!n) return false;
     // GPS 오차만큼 조금 더 봐줘요 (최대 20m)
@@ -526,7 +529,7 @@ export class Room extends DurableObject {
     return n.d <= this.g.settings.catchDist + extra;
   }
   report(p) {
-    if (!this.canReport(p)) { this.toast(p, '근처에 ' + TN[this.g.settings.mode][0] + '가 없어서 신고할 수 없어요'); this.broadcast(); return; }
+    if (!this.reportable(p)) { this.broadcast(); return; }
     p.state = 'pending';
     this.g.reports.push({ id: 'r' + (++this.g.seq), from: p.id, at: Date.now() });
     this.toastWhere(c => c.role === 'chaser' && c.state !== 'out', p.name + '님이 잡혔다고 신고했어요');
@@ -798,7 +801,7 @@ export class Room extends DurableObject {
       photoLeft: v.photoDueAt != null ? Math.max(0, (v.photoDueAt - now) / 1000) : null,
       publicByPhoto: v.publicByPhoto, publicByDisc: v.publicByDisc,
       freezeLeft: v.freezeUntil > now ? (v.freezeUntil - now) / 1000 : 0,
-      canReport: this.canReport(v), nearDist: near ? Math.round(near.d) : null,
+      canReport: this.canReport(v), reportable: this.reportable(v), nearDist: near ? Math.round(near.d) : null,
       rescue: rt ? { inmates: rt.inmates.length, progress: v.rescueStart ? Math.min(1, (now - v.rescueStart) / (S.rescueHold * 1000)) : 0 } : null,
       jailIndex: v.jailId ? g.jails.findIndex(j => j.id === v.jailId) + 1 : 0,
       escort: null, busy: false, late: !!v.late,
