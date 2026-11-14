@@ -55,14 +55,17 @@ const ENUMS = {
 };
 const BOOLS = ['teamSee', 'transfer', 'photoOn', 'copsMajority', 'radarRangeOn', 'radarSightOn'];
 const TN = { tag: ['술래', '도망자'], hide: ['술래', '숨는 사람'], cops: ['경찰', '도둑'], zombie: ['좀비', '생존자'] };
+// 설정 변경 알림용 이름 ({C}/{R}는 모드에 맞는 이름으로 바뀌어요)
 const LABELS = {
-  mode: '모드', chaserCount: '잡는 쪽 인원', timeLimit: '제한 시간', hideTime: '숨는 시간', winMode: '승리 조건', winN: 'N명',
-  revealC2R: '잡는 쪽 위치 보기', revealC2RSec: '잡는 쪽 보기 간격', revealR2C: '도망치는 쪽 위치 보기', revealR2CSec: '도망치는 쪽 보기 간격', teamSee: '같은 팀 위치 보기',
-  catchDist: '잡기 거리', boundaryAllow: '이탈 허용 시간', disconnectAllow: '끊김 허용 시간', autoOut: '자동 탈락 시간', transfer: '술래 넘기기', transferCountdown: '넘긴 뒤 카운트다운',
-  rescueHold: '구출 누르는 시간', jailRadius: '감옥 반경', copsMajority: '시간 끝날 때 과반 수감이면 경찰 승리', radarRangeOn: '범위 레이더', radarRangeDist: '범위 레이더 반경', radarSightOn: '시야 레이더', radarSightDist: '시야 거리', radarSightAngle: '시야각', radarCooldown: '레이더 쿨타임', radarActive: '레이더 작동 시간', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
+  mode: '모드', chaserCount: '{C} 인원', timeLimit: '게임 시간', hideTime: '숨는 시간', winMode: '이기는 조건', winN: '잡아야 하는 수',
+  revealC2R: '{C}에게 {R} 위치', revealC2RSec: '{C} 위치 보기 간격', revealR2C: '{R}에게 {C} 위치', revealR2CSec: '{R} 위치 보기 간격', teamSee: '같은 편 위치 보기',
+  catchDist: '잡는 거리', boundaryAllow: '경기장 밖 허용 시간', disconnectAllow: '화면 꺼짐 허용 시간', autoOut: '연결 끊김 탈락 시간', transfer: '술래 넘기기', transferCountdown: '새 술래 대기 시간',
+  rescueHold: '구출 버튼 누르는 시간', jailRadius: '감옥 크기', copsMajority: '절반 넘게 갇히면 경찰 승리', radarRangeOn: '범위 레이더', radarRangeDist: '범위 레이더 거리', radarSightOn: '시야 레이더', radarSightDist: '시야 레이더 거리', radarSightAngle: '시야각', radarCooldown: '레이더 쉬는 시간', radarActive: '레이더 작동 시간', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
 };
-const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: 'N명', hidden: '안 보임', interval: 'N초마다', always: '항상', runners: '도망치는 쪽', chasers: '잡는 쪽', true: '켬', false: '끔' };
-const UNITS = { timeLimit: '초', hideTime: '초', revealC2RSec: '초', revealR2CSec: '초', catchDist: 'm', boundaryAllow: '초', disconnectAllow: '초', autoOut: '초', transferCountdown: '초', rescueHold: '초', jailRadius: 'm', radarRangeDist: 'm', radarSightDist: 'm', radarSightAngle: '°', radarCooldown: '초', radarActive: '초', photoEvery: '초', photoDeadline: '초' };
+const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: '정한 수만큼', hidden: '안 보임', interval: '가끔', always: '항상', runners: '{R}만', chasers: '{C}만', true: '켬', false: '끔' };
+const TIME_KEYS = ['timeLimit', 'hideTime', 'revealC2RSec', 'revealR2CSec', 'boundaryAllow', 'disconnectAllow', 'autoOut', 'transferCountdown', 'rescueHold', 'radarCooldown', 'radarActive', 'photoEvery', 'photoDeadline'];
+const UNITS = { chaserCount: '명', winN: '명', catchDist: 'm', jailRadius: 'm', radarRangeDist: 'm', radarSightDist: 'm', radarSightAngle: '°' };
+function dur(sec) { sec = Math.round(sec); const m = Math.floor(sec / 60), s = sec % 60; return m && s ? m + '분 ' + s + '초' : m ? m + '분' : s + '초'; }
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const IDLE_MS = 15 * 60 * 1000;
 
@@ -262,7 +265,7 @@ export class Room extends DurableObject {
   screenOff(p) {
     const g = this.g;
     if (g.phase !== 'playing' && g.phase !== 'hiding') return;
-    this.notify(p, '화면이 꺼졌어요!', g.settings.disconnectAllow + '초 안에 다시 켜지 않으면 내 위치가 모두에게 공개돼요. 지금 화면을 켜 주세요', true);
+    this.notify(p, '화면이 꺼졌어요!', dur(g.settings.disconnectAllow) + ' 안에 다시 켜지 않으면 내 위치가 모두에게 공개돼요. 지금 화면을 켜 주세요', true);
   }
   toastAll(text, exceptId) { for (const [ws, pid] of this.sockets) if (pid !== exceptId) { try { ws.send(JSON.stringify({ type: 'toast', text })); } catch (e) {} } }
   toastWhere(fn, text) { this.g.players.forEach(p => { if (fn(p)) this.toast(p, text); }); }
@@ -311,8 +314,9 @@ export class Room extends DurableObject {
           const before = { ...S };
           this.applySettings(m.settings || {});
           const diff = Object.keys(DEFAULTS).filter(k => before[k] !== S[k]).map(k => {
-            const f = v => (VALUE_NAMES[String(v)] || v) + (UNITS[k] || '');
-            return LABELS[k] + ' ' + f(before[k]) + ' → ' + f(S[k]);
+            const w = TN[S.mode] || TN.tag, nm = t => String(t).replace(/\{C\}/g, w[0]).replace(/\{R\}/g, w[1]);
+            const f = v => TIME_KEYS.includes(k) ? dur(v) : nm(VALUE_NAMES[String(v)] || v) + (UNITS[k] || '');
+            return nm(LABELS[k]) + ' ' + f(before[k]) + ' → ' + f(S[k]);
           });
           if (diff.length) this.toastAll('방장이 설정을 바꿨어요: ' + diff.slice(0, 4).join(', ') + (diff.length > 4 ? ' 외 ' + (diff.length - 4) + '개' : ''), p.id);
           this.changed(true);
@@ -697,7 +701,7 @@ export class Room extends DurableObject {
         if (p.state !== 'out' && p.lat != null && (!p.trailAt || now - p.trailAt >= 5000)) { p.trailAt = now; p.trail.push([+p.lat.toFixed(6), +p.lng.toFixed(6), p.role === 'chaser' ? 1 : 0]); }
         if (p.state === 'out' || p.lat == null) return;
         // 오래 끊긴 사람은 자동 탈락
-        if (!p.connected && p.discAt != null && now - p.discAt >= S.autoOut * 1000) { this.setOut(p, '연결이 ' + Math.round(S.autoOut / 60) + '분 넘게 끊김'); this.checkWin(); return; }
+        if (!p.connected && p.discAt != null && now - p.discAt >= S.autoOut * 1000) { this.setOut(p, '연결이 ' + dur(S.autoOut) + ' 넘게 끊김'); this.checkWin(); return; }
         if (p.escorting && p.connected) {
           const t = this.escortOf(p), nj = t && this.nearestJail(p);
           if (t && nj && nj.d <= S.jailRadius) this.jailNow(p, t, nj.jail);
@@ -725,7 +729,7 @@ export class Room extends DurableObject {
         if (!p.connected && !p.publicByDisc && p.discAt != null && now - p.discAt >= S.disconnectAllow * 1000) {
           p.publicByDisc = true;
           this.notify(p, '내 위치가 공개됐어요', '화면이 너무 오래 꺼져 있었어요. 다시 켜면 숨겨져요', true);
-          this.toastAll(p.name + '님 연결이 ' + S.disconnectAllow + '초 넘게 끊겨서 마지막 위치가 공개됐어요', p.id);
+          this.toastAll(p.name + '님 연결이 ' + dur(S.disconnectAllow) + ' 넘게 끊겨서 마지막 위치가 공개됐어요', p.id);
         }
         if (p.photoDueAt != null && now >= p.photoDueAt) {
           p.photoDueAt = null; p.publicByPhoto = true;

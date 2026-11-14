@@ -98,10 +98,22 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .toasts{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 36px);top:calc(env(safe-area-inset-top) + 130px);z-index:1000;display:flex;flex-direction:column;gap:6px;pointer-events:none}
 .toast{background:var(--ink);color:#fff;border-radius:14px;padding:12px 14px;font-size:15px;font-weight:700;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.2)}
 .net{position:fixed;left:0;right:0;top:0;z-index:1100;background:#15171A;color:#fff;text-align:center;font-size:14px;font-weight:700;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
-.form{display:grid;grid-template-columns:1fr 128px;gap:8px 10px;align-items:center}
-.form h4{grid-column:1 / -1;margin:10px 0 0;font-size:14px;color:var(--sub)}
-.form label{font-size:15px}
-.form input[type=number],.form select{height:44px;border:2px solid #D5DAE1;border-radius:10px;padding:0 8px;background:#fff;width:100%}
+.form{display:flex;flex-direction:column;gap:10px}
+.form h4{margin:10px 0 0;font-size:14px;color:var(--sub)}
+.frow{display:flex;align-items:center;gap:10px;min-height:44px}
+.frow label{flex:1;min-width:0}
+.frow label b{display:block;font-size:15px;font-weight:600}
+.frow label small{display:block;font-size:12.5px;color:var(--sub);line-height:1.4;margin-top:2px}
+.frow.sub{margin-left:6px;padding-left:12px;border-left:3px solid #E3E7EC}
+.form .hide,.form .advbox{display:none}
+.form.more .advbox{display:flex;flex-direction:column;gap:10px}
+.form.more .advbox .hide{display:none}
+.form input[type=number],.form select{height:44px;border:2px solid #D5DAE1;border-radius:10px;padding:0 8px;background:#fff;font-size:16px}
+.form select{width:150px;flex:none}
+.unit{display:flex;align-items:center;gap:4px;flex:none;font-size:15px}
+.unit input[type=number]{width:64px;text-align:right}
+.tm input[type=number]{width:52px}
+.leaflet-container{isolation:isolate}
 .etop{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 10px);z-index:600;box-shadow:0 4px 16px rgba(21,23,26,.14)}
 .ebottom{position:fixed;left:50%;transform:translateX(-50%);width:min(480px,100vw);bottom:0;z-index:600;background:#fff;border-radius:24px 24px 0 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:10px;box-shadow:0 -4px 20px rgba(21,23,26,.12)}
 .tk{position:relative}
@@ -300,8 +312,8 @@ function pushCard(m){
   return '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + head('알림 켜기 (추천)', '게임 중 화면이 꺼지면 진동 알림으로 바로 알려줘요') + '<button class="big blue" data-act="pushOn" style="min-height:54px;font-size:18px">' + (C.pushBusy ? '켜는 중…' : '알림 켜기') + '</button></div>';
 }
 function awakeCard(){
-  const sec = S() ? S().disconnectAllow : 60;
-  return '<div class="warnbox" style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:1px"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#5C4400" stroke-width="2"/><path d="M10 18h4" stroke="#5C4400" stroke-width="2" stroke-linecap="round"/></svg><div><b>게임하는 동안 화면을 켜 두세요.</b> 화면이 켜진 채로 주머니에 넣으면 돼요. 화면을 잠그면 위치가 끊기고, ' + sec + '초가 지나면 내 위치가 모두에게 공개돼요.' + (!('wakeLock' in navigator) ? '<br><b>이 폰은 화면 켜두기가 자동으로 안 될 수 있어요.</b> 설정에서 자동 잠금을 \'안 함\'으로 바꿔 주세요.' : '') + ' 주머니 속 오작동은 게임 화면의 <b>잠금</b> 버튼으로 막을 수 있어요.</div></div>';
+  const sec = dur(S() ? S().disconnectAllow : 60);
+  return '<div class="warnbox" style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:1px"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#5C4400" stroke-width="2"/><path d="M10 18h4" stroke="#5C4400" stroke-width="2" stroke-linecap="round"/></svg><div><b>게임하는 동안 화면을 켜 두세요.</b> 화면이 켜진 채로 주머니에 넣으면 돼요. 화면을 잠그면 위치가 끊기고, ' + sec + ' 지나면 내 위치가 모두에게 공개돼요.' + (!('wakeLock' in navigator) ? '<br><b>이 폰은 화면 켜두기가 자동으로 안 될 수 있어요.</b> 설정에서 자동 잠금을 \'안 함\'으로 바꿔 주세요.' : '') + ' 주머니 속 오작동은 게임 화면의 <b>잠금</b> 버튼으로 막을 수 있어요.</div></div>';
 }
 
 // ===================== 위치 =====================
@@ -525,12 +537,12 @@ B.lobby = () => {
   $('#app').innerHTML =
   '<div class="scr"><div class="pad">' +
     '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
+    '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div id="lMode" style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="lMode2" class="sub small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
+    '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div id="lGeo"></div>' +
     '<div id="lCheck"></div>' +
     '<div id="lPush"></div>' +
     '<div id="lAwake"></div>' +
-    '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div class="sub small">모드</div><div id="lMode" style="font-weight:700"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
-    '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div class="row" style="justify-content:space-between;padding:2px 4px 0"><b id="lCount"></b><span class="sub small">지망자 중에서 랜덤으로 뽑아요</span></div>' +
     '<div class="list" id="lList"></div>' +
     '<div id="lActions" style="display:flex;flex-direction:column;gap:12px"></div>' +
@@ -541,7 +553,8 @@ B.lobby = () => {
 U.lobby = () => {
   const st = C.st, s = st.settings, m = me();
   $('#lCode').textContent = st.code;
-  $('#lMode').textContent = MODE_NAME[s.mode] + ' · ' + Math.round(s.timeLimit/60) + '분 · ' + cw() + ' ' + s.chaserCount + '명';
+  $('#lMode').textContent = MODE_NAME[s.mode];
+  $('#lMode2').textContent = dur(s.timeLimit) + ' · ' + cw() + ' ' + s.chaserCount + '명';
   $('#lAreaTag').textContent = st.area.length >= 3 ? ('경기장' + (s.mode === 'cops' ? ' · 감옥 ' + st.jails.length + '개' : '')) : '경기장을 아직 안 그렸어요';
   if (C.lVer !== C.stVer) { C.lVer = C.stVer; const lay = C.lmap._lay; lay.clearLayers(); drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay, st.tokens); }
   const ak = JSON.stringify(st.area); if (ak !== C.lmapArea && st.area.length >= 3) { C.lmapArea = ak; C.lmap.fitBounds(areaBounds(), { padding:[16,16] }); }
@@ -552,7 +565,7 @@ U.lobby = () => {
   setHTML($('#lList'), st.players.map(p =>
     '<div class="item"><div class="av">' + esc(p.name.charAt(0)) + '</div><span style="flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + (p.id === m.id ? ' (나)' : '') + '</span>' +
     (p.host ? '<span class="chip c-host">방장</span>' : '') + (p.wish ? '<span class="chip c-wish">' + cw() + ' 지망</span>' : '') +
-    (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : !p.checked ? '<span class="chip c-warn">점검 전</span>' : '<span class="chip c-ok">준비 완료</span>') + '</div>').join(''));
+    (!p.connected ? '<span class="chip c-warn">끊김</span>' : !p.hasPos ? '<span class="chip c-warn">위치 없음</span>' : !p.checked ? '<span class="chip c-warn">소리 확인 전</span>' : '<span class="chip c-ok">준비 완료</span>') + '</div>').join(''));
   setHTML($('#lCheck'), checkCard(m) + compassCard(s));
   setHTML($('#lPush'), pushCard(m));
   setHTML($('#lAwake'), awakeCard());
@@ -572,63 +585,73 @@ U.lobby = () => {
   setHTML($('#lOv'), (C.settingsOpen && m.host ? settingsSheet() : '') + (C.bigMap ? '<div class="sheet" style="background:#E6EBEF;justify-content:stretch"><div id="bigmap" style="position:absolute;inset:0"></div><div class="etop card"><b>' + ($('#lAreaTag').textContent) + '</b><div class="sub small">파란 점선 안에서만 움직여요' + (s.mode === 'cops' ? ' · 회색 원이 감옥이에요' : '') + '</div></div><div class="ebottom"><button class="big blue" data-act="bigmapClose">확인했어요</button></div></div>' : ''));
   if (C.bigMap && !C.bigMapObj) { const bm = makeMap($('#bigmap'), true); C.bigMapObj = bm; C.bigVer = -1; maps.push(bm); bm.fitBounds(areaBounds(), { paddingTopLeft:[16,90], paddingBottomRight:[16,110] }); }
   if (C.bigMapObj && C.bigVer !== C.stVer) { C.bigVer = C.stVer; const lay2 = C.bigMapObj._lay; lay2.clearLayers(); drawArea(lay2, st.area, st.jails, s.jailRadius, s.mode === 'cops'); drawTokens(lay2, st.tokens); }
-  if (C.settingsOpen && m.host && !C.settingsFilled) fillSettings();
+  if (C.settingsOpen && m.host) { if (!C.settingsFilled) fillSettings(); else applyForm(); }
 };
 
-// 방장 설정
+// 방장 설정 — 기본 5개만 보이고, 나머지는 "자세히 설정"에 접혀 있어요
+// {C} = 잡는 쪽 이름, {R} = 도망치는 쪽 이름 (모드마다 바뀌어요: 술래/경찰/좀비 …)
+const SEE = [['hidden','안 보여요'],['interval','가끔 보여요'],['always','항상 보여요']];
+const ANY_RADAR = v => v('radarRangeOn') || v('radarSightOn');
 const SCHEMA = [
-  ['h','기본'],
-  ['mode','모드','sel',[['tag','술래잡기'],['hide','숨바꼭질'],['cops','경찰과 도둑'],['zombie','좀비감염']]],
-  ['chaserCount','잡는 쪽 인원','num'],
-  ['timeLimit','제한 시간(초)','num'],
-  ['hideTime','숨는 시간(초)','num'],
-  ['winMode','승리 조건','sel',[['all','전원 잡기'],['n','N명 잡기']]],
-  ['winN','└ N명','num'],
-  ['catchDist','잡기 가능 거리(m)','num'],
-  ['h','위치 공개'],
-  ['revealC2R','잡는 쪽이 상대 보기','sel',[['hidden','안 보임'],['interval','N초마다'],['always','항상']]],
-  ['revealC2RSec','└ 간격(초)','num'],
-  ['revealR2C','도망치는 쪽이 상대 보기','sel',[['hidden','안 보임'],['interval','N초마다'],['always','항상']]],
-  ['revealR2CSec','└ 간격(초)','num'],
-  ['teamSee','같은 팀끼리 위치 보기','bool'],
-  ['h','이탈 · 끊김'],
-  ['boundaryAllow','경기장·감옥 이탈 허용(초)','num'],
-  ['disconnectAllow','끊김 허용(초) → 넘으면 위치 공개','num'],
-  ['autoOut','끊김 자동 탈락(초)','num'],
-  ['h','술래잡기 · 숨바꼭질'],
-  ['transfer','술래 넘기기','bool'],
-  ['transferCountdown','└ 넘긴 뒤 카운트다운(초)','num'],
-  ['h','경찰과 도둑'],
-  ['rescueHold','구출 누르는 시간(초)','num'],
-  ['jailRadius','감옥 반경(m)','num'],
-  ['copsMajority','시간 끝날 때 과반 수감이면 경찰 승리','bool'],
-  ['h','추가 모드'],
-  ['radarRangeOn','범위 레이더 (잡는 쪽 폰에서 삑삑)','bool'],
-  ['radarRangeDist','└ 반경(m)','num'],
-  ['radarSightOn','시야 레이더 (폰을 비춘 방향)','bool'],
-  ['radarSightDist','└ 시야 거리(m)','num'],
-  ['radarSightAngle','└ 시야각(°)','num'],
-  ['radarActive','레이더 작동 시간(초)','num'],
-  ['radarCooldown','레이더 쿨타임(초, 0이면 항상 켜짐)','num'],
-  ['photoOn','사진 모드','bool'],
-  ['photoEvery','└ 간격(초)','num'],
-  ['photoDeadline','└ 보내는 제한 시간(초)','num'],
-  ['photoSenders','└ 보내는 사람','sel',[['runners','도망치는 쪽만'],['all','전원']]],
-  ['photoViewers','└ 보는 사람','sel',[['chasers','잡는 쪽만'],['all','전원']]]
+  { k:'mode', t:'sel', l:'모드', o:[['tag','술래잡기'],['hide','숨바꼭질'],['cops','경찰과 도둑'],['zombie','좀비감염']] },
+  { k:'chaserCount', t:'num', u:'명', l:'{C} 인원', d:'<span id="f_rec"></span>' },
+  { k:'timeLimit', t:'time', l:'게임 시간' },
+  { k:'hideTime', t:'time', l:'숨는 시간', d:'시작하면 {C}는 이 시간 동안 눈 감고 기다려요' },
+  { k:'catchDist', t:'num', u:'m', l:'잡는 거리', d:'{C}가 이 거리 안에 와야 잡을 수 있어요' },
+  { more:true },
+  { h:'이기는 조건' },
+  { k:'winMode', t:'sel', l:'{C}가 이기려면', o:[['all','{R} 전원 잡기'],['n','정한 수만큼 잡기']], d:'시간 안에 못 하면 {R}가 이겨요', show:v => !(v('transfer') && (v('mode') === 'tag' || v('mode') === 'hide')) },
+  { k:'winN', t:'num', u:'명', l:'잡아야 하는 수', sub:true, show:v => v('winMode') === 'n' && !(v('transfer') && (v('mode') === 'tag' || v('mode') === 'hide')) },
+  { k:'copsMajority', t:'bool', l:'시간이 끝날 때 절반 넘게 갇혀 있으면 경찰 승리', modes:['cops'] },
+  { h:'술래 넘기기', modes:['tag','hide'] },
+  { k:'transfer', t:'bool', l:'술래 넘기기', d:'잡힌 사람이 새 술래가 돼요. 시간이 끝날 때 술래인 사람이 져요', modes:['tag','hide'] },
+  { k:'transferCountdown', t:'time', l:'새 술래 대기 시간', d:'새 술래는 이 시간 동안 못 잡아요', sub:true, modes:['tag','hide'], show:v => v('transfer') },
+  { h:'감옥', modes:['cops'] },
+  { k:'jailRadius', t:'num', u:'m', l:'감옥 크기(반지름)', d:'이 원 안에 들어오면 감옥에 도착한 거예요', modes:['cops'] },
+  { k:'rescueHold', t:'time', l:'구출 버튼 누르는 시간', d:'도둑이 감옥 옆에서 이만큼 꾹 눌러야 구출돼요', modes:['cops'] },
+  { h:'위치 보기' },
+  { k:'revealC2R', t:'sel', l:'{C}에게 {R} 위치가', o:SEE },
+  { k:'revealC2RSec', t:'time', l:'보여주는 간격', sub:true, show:v => v('revealC2R') === 'interval' },
+  { k:'revealR2C', t:'sel', l:'{R}에게 {C} 위치가', o:SEE },
+  { k:'revealR2CSec', t:'time', l:'보여주는 간격', sub:true, show:v => v('revealR2C') === 'interval' },
+  { k:'teamSee', t:'bool', l:'같은 편끼리 위치 보기' },
+  { h:'규칙 어기면' },
+  { k:'boundaryAllow', t:'time', l:'경기장 밖 허용 시간', d:'이 시간 넘게 경기장 밖에 있으면 탈락해요 (수감 중엔 감옥 밖)' },
+  { k:'disconnectAllow', t:'time', l:'화면 꺼짐 허용 시간', d:'넘으면 마지막 위치가 모두에게 공개돼요' },
+  { k:'autoOut', t:'time', l:'연결 끊김 탈락 시간', d:'이만큼 끊겨 있으면 탈락해요' },
+  { h:'레이더 ({C} 폰에서 소리)' },
+  { k:'radarRangeOn', t:'bool', l:'범위 레이더', d:'{R}가 가까이 있으면 삑삑 소리가 점점 커져요' },
+  { k:'radarRangeDist', t:'num', u:'m', l:'감지 거리', sub:true, show:v => v('radarRangeOn') },
+  { k:'radarSightOn', t:'bool', l:'시야 레이더', d:'폰을 비춘 방향에 {R}가 있으면 소리가 나요. 주머니 잠금 중엔 꺼져요' },
+  { k:'radarSightDist', t:'num', u:'m', l:'볼 수 있는 거리', sub:true, show:v => v('radarSightOn') },
+  { k:'radarSightAngle', t:'num', u:'°', l:'시야각', sub:true, show:v => v('radarSightOn') },
+  { k:'radarCooldown', t:'time', l:'다시 쓰기까지 쉬는 시간', d:'0이면 항상 켜져 있어요. 0보다 크면 버튼을 눌러 켜요', sub:true, show:ANY_RADAR },
+  { k:'radarActive', t:'time', l:'한 번 켜면 작동 시간', sub:true, show:v => ANY_RADAR(v) && v('radarCooldown') > 0 },
+  { h:'사진 모드' },
+  { k:'photoOn', t:'bool', l:'사진 모드', d:'정해진 간격마다 주변 사진을 찍어 보내요. 안 보내면 위치가 공개돼요' },
+  { k:'photoEvery', t:'time', l:'보내는 간격', sub:true, show:v => v('photoOn') },
+  { k:'photoDeadline', t:'time', l:'보내는 제한 시간', sub:true, show:v => v('photoOn') },
+  { k:'photoSenders', t:'sel', l:'보내는 사람', o:[['runners','{R}만'],['all','전원']], sub:true, show:v => v('photoOn') },
+  { k:'photoViewers', t:'sel', l:'보는 사람', o:[['chasers','{C}만'],['all','전원']], sub:true, show:v => v('photoOn') }
 ];
+// 화면에 보여줄 시간: 90 → "1분 30초"
+function dur(sec){ sec = Math.round(sec); const m = Math.floor(sec / 60), s = sec % 60; return m && s ? m + '분 ' + s + '초' : m ? m + '분' : s + '초'; }
+// 시트 HTML은 항상 같아야 해요 (다시 그려져도 입력값이 안 날아가게). 바뀌는 글자는 applyForm()이 채워요
 function settingsSheet(){
-  let f = '<div class="form">';
-  SCHEMA.forEach(r => {
-    if (r[0] === 'h') { f += '<h4>' + r[1] + '</h4>'; return; }
-    const id = 'f_' + r[0];
-    f += '<label for="' + id + '">' + r[1] + '</label>';
-    if (r[2] === 'sel') f += '<select id="' + id + '" data-k="' + r[0] + '">' + r[3].map(o => '<option value="' + o[0] + '">' + o[1] + '</option>').join('') + '</select>';
-    else if (r[2] === 'num') f += '<input type="number" inputmode="numeric" min="0" id="' + id + '" data-k="' + r[0] + '">';
-    else f += '<input type="checkbox" id="' + id + '" data-k="' + r[0] + '" style="width:24px;height:24px;justify-self:start">';
+  let f = '<div class="form" id="sForm">', adv = false;
+  SCHEMA.forEach((r, i) => {
+    if (r.more) { adv = true; f += '<button type="button" class="mid" id="f_more" style="margin-top:4px">자세히 설정 ▾</button><div class="advbox">'; return; }
+    if (r.h) { f += '<h4 data-i="' + i + '" data-tpl="' + esc(r.h) + '"></h4>'; return; }
+    const id = 'f_' + r.k;
+    f += '<div class="frow' + (r.sub ? ' sub' : '') + '" data-i="' + i + '"><label for="' + id + '"><b data-tpl="' + esc(r.l) + '"></b>' + (r.d ? '<small' + (r.d.startsWith('<') ? '>' + r.d : ' data-tpl="' + esc(r.d) + '">') + '</small>' : '') + '</label>';
+    if (r.t === 'sel') f += '<select id="' + id + '" data-k="' + r.k + '">' + r.o.map(o => '<option value="' + o[0] + '" data-tpl="' + esc(o[1]) + '"></option>').join('') + '</select>';
+    else if (r.t === 'num') f += '<span class="unit"><input type="number" inputmode="numeric" min="0" id="' + id + '" data-k="' + r.k + '">' + r.u + '</span>';
+    else if (r.t === 'time') f += '<span class="unit tm" data-k="' + r.k + '" data-t="time"><input type="number" inputmode="numeric" min="0" id="' + id + '" aria-label="분">분<input type="number" inputmode="numeric" min="0" max="59" aria-label="초">초</span>';
+    else f += '<span class="tg off" role="switch" tabindex="0" id="' + id + '" data-k="' + r.k + '" data-t="bool"><span></span></span>';
+    f += '</div>';
   });
-  f += '</div>';
-  const n = C.st ? C.st.players.length : 0, rec = Math.max(1, Math.round(n / 4));
-  return '<div class="sheet"><div class="in"><h3>게임 설정</h3><div class="sub small" style="text-align:center">시간은 초, 거리는 미터 단위예요<br>참가자 ' + n + '명이면 잡는 쪽 ' + rec + '명을 추천해요 (4명당 1명)</div>' + f + '<div class="row"><button class="mid" data-act="settingsClose" style="flex:1">취소</button><button class="big blue" data-act="settingsSave" style="flex:2">저장</button></div></div></div>';
+  f += (adv ? '</div>' : '') + '</div>';
+  return '<div class="sheet"><div class="in"><h3>게임 설정</h3>' + f + '<div class="row"><button class="mid" data-act="settingsClose" style="flex:1">취소</button><button class="big blue" data-act="settingsSave" style="flex:2">저장</button></div></div></div>';
 }
 // 모드를 바꾸면 그 모드에 맞는 기본값으로 채워요
 const MODE_DEFAULTS = {
@@ -637,23 +660,57 @@ const MODE_DEFAULTS = {
   cops:   { revealC2R:'interval', revealR2C:'interval', hideTime:60 },
   zombie: { revealC2R:'always',   revealR2C:'hidden',   hideTime:60 }
 };
+function fEl(k){ return document.querySelector('#sForm [data-k="' + k + '"]'); }
+function getF(k){
+  const el = fEl(k); if (!el) return null;
+  if (el.dataset.t === 'bool') return el.classList.contains('on');
+  if (el.dataset.t === 'time') { const [a, b] = el.querySelectorAll('input'); if (a.value.trim() === '' && b.value.trim() === '') return null; return (+a.value || 0) * 60 + (+b.value || 0); }
+  if (el.type === 'number') return el.value.trim() === '' ? null : +el.value;
+  return el.value;
+}
+function setF(k, v){
+  const el = fEl(k); if (!el) return;
+  if (el.dataset.t === 'bool') { el.classList.toggle('on', !!v); el.classList.toggle('off', !v); el.setAttribute('aria-checked', v ? 'true' : 'false'); }
+  else if (el.dataset.t === 'time') { const [a, b] = el.querySelectorAll('input'); v = Math.round(+v || 0); a.value = Math.floor(v / 60); b.value = v % 60; }
+  else el.value = v;
+}
+// 모드 이름·보일 칸을 지금 고른 값에 맞춰요
+function applyForm(){
+  const form = $('#sForm'); if (!form) return;
+  const mode = getF('mode') || 'tag', w = TN[mode];
+  const fill = t => t.replace(/\{C\}/g, w[0]).replace(/\{R\}/g, w[1]);
+  form.querySelectorAll('[data-tpl]').forEach(el => { const t = fill(el.dataset.tpl); if (el.textContent !== t) el.textContent = t; });
+  form.querySelectorAll('[data-i]').forEach(el => {
+    const r = SCHEMA[+el.dataset.i];
+    el.classList.toggle('hide', !!(r.modes && !r.modes.includes(mode)) || !!(r.show && !r.show(getF)));
+  });
+  const n = C.st ? C.st.players.length : 0, rec = $('#f_rec');
+  if (rec) rec.textContent = '참가자 ' + n + '명이면 ' + Math.max(1, Math.round(n / 4)) + '명 추천 (4명당 1명)';
+}
 function fillSettings(){
   const s = S(); C.settingsFilled = true;
-  document.querySelectorAll('[data-k]').forEach(el => { const k = el.dataset.k; if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; });
+  SCHEMA.forEach(r => { if (r.k) setF(r.k, s[r.k]); });
+  const form = $('#sForm');
+  form.addEventListener('input', applyForm);
+  form.addEventListener('change', applyForm);
+  form.querySelectorAll('[data-t="bool"]').forEach(el => {
+    const flip = () => { setF(el.dataset.k, !el.classList.contains('on')); applyForm(); };
+    el.addEventListener('click', flip);
+    el.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+  });
+  $('#f_more').onclick = () => { const on = form.classList.toggle('more'); $('#f_more').textContent = on ? '자세히 설정 접기 ▴' : '자세히 설정 ▾'; };
   const sel = $('#f_mode');
-  if (sel) sel.onchange = () => {
+  sel.addEventListener('change', () => {
     const d = MODE_DEFAULTS[sel.value] || {};
-    Object.keys(d).forEach(k => { const el = document.querySelector('[data-k="' + k + '"]'); if (el) el.value = d[k]; });
-    toast(MODE_NAME[sel.value] + '에 맞게 위치 공개·숨는 시간을 바꿨어요');
-  };
+    Object.keys(d).forEach(k => setF(k, d[k]));
+    applyForm();
+    toast(MODE_NAME[sel.value] + '에 맞게 위치 보기·숨는 시간을 바꿨어요');
+  });
+  applyForm();
 }
 function readSettings(){
   const o = {};
-  document.querySelectorAll('[data-k]').forEach(el => {
-    const k = el.dataset.k;
-    if (el.type === 'number' && el.value.trim() === '') return; // 빈 칸은 원래 값 유지
-    o[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? +el.value : el.value;
-  });
+  SCHEMA.forEach(r => { if (!r.k) return; const v = getF(r.k); if (v != null) o[r.k] = v; }); // 빈 칸은 원래 값 유지
   return o;
 }
 // 다각형 도우미 (위도·경도)
@@ -836,7 +893,7 @@ U.game = () => {
     if (m.rescue) {
       const pr = Math.round(m.rescue.progress * 100);
       // 버튼은 그대로 두고 진행 막대만 바꿔요 (누르는 중에 버튼이 바뀌면 터치가 끊겨요)
-      b = '<div class="hint">감옥에 ' + m.rescue.inmates + '명 갇혀 있어요 · 버튼을 ' + s.rescueHold + '초 동안 꾹 누르세요</div><div class="progress"><i id="rescueBar" style="width:0%"></i></div>' +
+      b = '<div class="hint">감옥에 ' + m.rescue.inmates + '명 갇혀 있어요 · 버튼을 ' + dur(s.rescueHold) + ' 동안 꾹 누르세요</div><div class="progress"><i id="rescueBar" style="width:0%"></i></div>' +
           '<button class="big blue holdbtn" data-hold="rescue">구출하기 (꾹 누르기)</button>' +
           (m.canReport ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
     } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
@@ -885,22 +942,20 @@ function albumSheet(album){
 function rulesList(st, m){
   const s = st.settings, c = cw(), r = rw(), mode = s.mode;
   const common = [
-    '<b>게임 중에는 폰 화면을 켜 두세요.</b> 끄면 ' + s.disconnectAllow + '초 뒤 위치가 공개되고, ' + Math.round(s.autoOut / 60) + '분이면 탈락해요. 주머니 오작동은 <b>주머니 잠금</b>으로 막아요',
-    '<b>잡히면 바로 "잡혔어요"를 눌러요.</b> 미루지 않기!',
-    '경기장(파란 점선) 밖으로 일부러 나가지 않기',
-    '뛸 때 <b>차도·계단·사람</b> 조심. 다치면 바로 말하고 멈춰요'
+    '<b>폰 화면은 켜 둔 채로</b> 주머니에 넣어요. 오작동은 <b>주머니 잠금</b>으로 막아요',
+    '<b>잡히면 바로 "잡혔어요"</b>를 눌러요',
+    '파란 점선 밖으로 나가지 않기. 뛸 때 <b>차도·계단</b> 조심'
   ];
+  const wait = '숨는 시간엔 ' + (mode === 'zombie' ? '첫 좀비' : c) + '는 <b>눈 감고 제자리</b>에서 기다려요';
   const by = {
-    tag: ['숨는 시간엔 ' + c + '는 <b>눈 감고 제자리</b>에서 기다려요'].concat(s.transfer ? ['잡힌 사람이 새 ' + c + '가 돼요. ' + s.transferCountdown + '초 카운트다운 동안은 못 잡고, 넘겨준 사람은 ' + s.transferCountdown + '초 동안 안 잡혀요', '시간이 끝날 때 ' + c + '인 사람이 져요'] : []),
-    hide: ['숨는 시간엔 ' + c + '는 <b>눈 감고 제자리</b>에서 기다려요', '숨은 뒤에는 <b>되도록 움직이지 않기</b>. 숨바꼭질이니까요'].concat(s.transfer ? ['잡힌 사람이 새 ' + c + '가 돼요. 시간이 끝날 때 ' + c + '인 사람이 져요'] : []),
-    cops: ['숨는 시간엔 경찰은 <b>눈 감고 제자리</b>에서 기다려요', '체포되면 <b>경찰을 따라 감옥까지</b> 가요 (탈출 불가)', '경찰은 감옥 바로 옆(30m 안)에서 <b>지키고 서 있지 않기</b>', '구출하다가 잡히면 <b>바로 신고</b>해요. 구출된 도둑은 10초 동안 안 잡혀요', '수감된 도둑은 감옥 원 안에 있어요. 감옥까지 걸어올 시간은 2분이에요'],
-    zombie: ['숨는 시간엔 첫 좀비는 <b>눈 감고 제자리</b>에서 기다려요', '감염되면 <b>10초 뒤</b>에 좀비로 변해요. 그동안은 못 잡아요']
+    tag: [wait].concat(s.transfer ? ['잡힌 사람이 새 술래가 돼요. 끝날 때 술래인 사람이 져요'] : []),
+    hide: [wait, '숨은 뒤엔 <b>되도록 움직이지 않기</b>'].concat(s.transfer ? ['잡힌 사람이 새 술래가 돼요. 끝날 때 술래인 사람이 져요'] : []),
+    cops: [wait, '체포되면 <b>경찰을 따라 감옥까지</b> 가요 (탈출 불가)', '경찰은 감옥 바로 옆에서 지키지 않기'],
+    zombie: [wait, '감염되면 <b>10초 뒤</b> 좀비가 돼요']
   };
   const extra = [];
-  if (s.radarRangeOn) extra.push('<b>범위 레이더:</b> ' + r + '가 ' + c + ' 반경 ' + s.radarRangeDist + 'm 안에 있으면 ' + c + ' 폰에서 "삑삑" 소리가 나요. 가까울수록 크고 빨라져요');
-  if (s.radarSightOn) extra.push('<b>시야 레이더:</b> ' + c + '가 폰을 세워 비춘 방향 ' + s.radarSightAngle + '° 안, ' + s.radarSightDist + 'm 안에 ' + r + '가 있으면 "띠딕" 소리가 나요. 정면·가까울수록 커져요. 주머니 잠금 중엔 꺼져요');
-  if ((s.radarRangeOn || s.radarSightOn) && s.radarCooldown > 0) extra.push('레이더는 버튼을 누르면 ' + s.radarActive + '초 동안 켜지고, ' + s.radarCooldown + '초 쉬어요');
-  if (s.photoOn) extra.push('<b>사진 모드:</b> ' + Math.round(s.photoEvery / 60) + '분마다 사진을 보내야 해요. 늦으면 위치가 공개돼요');
+  if (s.radarRangeOn || s.radarSightOn) extra.push('<b>레이더:</b> ' + r + '가 가까이 있으면 ' + c + ' 폰에서 소리가 나요');
+  if (s.photoOn) extra.push('<b>사진:</b> ' + dur(s.photoEvery) + '마다 사진을 보내야 해요. 늦으면 위치가 공개돼요');
   return (by[mode] || []).concat(extra, common);
 }
 function rulesSheet(st, m, ackAct){
@@ -1204,7 +1259,7 @@ function radarPanel(){
   if (s.radarSightOn && COMPASS.heading != null && !C.locked) h += '<div class="sub small" style="text-align:center">폰을 세워 들고 앞을 비춰보세요</div>';
   if (s.radarCooldown > 0) h += R.active ? '<div class="sub small" style="text-align:center;color:#1F6B2A;font-weight:700">레이더 작동 중 · ' + Math.ceil(((C.radarUntil || 0) - Date.now()) / 1000) + '초</div>'
     : R.coolLeft > 0 ? '<div class="sub small" style="text-align:center">레이더 쉬는 중 · ' + Math.ceil(R.coolLeft) + '초</div>'
-    : '<button class="mid" data-act="radarGo" style="min-height:44px">레이더 켜기 (' + s.radarActive + '초)</button>';
+    : '<button class="mid" data-act="radarGo" style="min-height:44px">레이더 켜기 (' + dur(s.radarActive) + ')</button>';
   return h + '</div>';
 }
 // 지도 위 내 범위 원·시야 부채꼴
