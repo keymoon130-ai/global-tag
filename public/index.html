@@ -939,7 +939,7 @@ U.game = () => {
           (m.reportable ? '<button class="mid" data-act="report">잡혔어요</button>' : '');
     } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
-    else b = '<div class="hint">근처에 ' + cw() + '가 없어요' + (m.nearDist != null ? ' · 가장 가까운 ' + cw() + ' 약 ' + m.nearDist + 'm' : '') + '</div><button class="mid" data-act="report">잡혔어요</button>';
+    else b = '<div class="hint">잡혔으면 직접 눌러 주세요</div><button class="mid" data-act="report">잡혔어요</button>';
   }
   if (!hiding && m.role === 'chaser' && m.state === 'alive' && m.radar) b = radarPanel() + b;
   setHTML($('#gBottom'), b);
@@ -956,7 +956,7 @@ U.game = () => {
     '<div style="text-align:left;background:rgba(255,255,255,.08);border-radius:16px;padding:14px 16px;max-width:440px;width:100%"><div style="font-weight:900;margin-bottom:6px">' + MODE_NAME[s.mode] + ' 규칙 · 주의사항</div><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.5">' + rulesList(st, m).map(t => '<li>' + t + '</li>').join('') + '</ol></div></div>'; }
   if (!hiding && m.freezeLeft > 0) ov += '<div class="ov dark"><h2>' + cw() + '가 됐어요!</h2><div class="count">' + fmt(m.freezeLeft) + '</div><p>카운트다운이 끝나면 출발해요</p></div>';
   if (C.askReport && m.state === 'alive' && m.role === 'runner') ov += '<div class="sheet"><div class="in"><h3>' + (m.canReport ? '정말 잡혔나요?' : '잡혔나요?') + '</h3>' +
-    (m.canReport ? '' : '<div class="warnbox" style="text-align:center">지도에서는 ' + cw() + '가 멀리 있는 걸로 나와요' + (m.nearDist != null ? ' (약 ' + m.nearDist + 'm)' : '') + '.<br>GPS 오차일 수 있으니, 진짜 잡혔으면 눌러 주세요</div>') +
+    (m.canReport ? '' : '<div class="warnbox" style="text-align:center">지도에서는 ' + cw() + '가 멀리 있는 걸로 나와요.<br>GPS 오차일 수 있으니, 진짜 잡혔으면 눌러 주세요</div>') +
     '<div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
   else C.askReport = false;
   if (m.photoLeft != null) ov += '<div class="sheet"><div class="in"><h3>사진 보낼 시간이에요</h3><div style="font-size:48px;font-weight:900;color:var(--blue);text-align:center;font-variant-numeric:tabular-nums">' + fmt(m.photoLeft) + '</div><div class="sub" style="text-align:center">시간 안에 안 보내면 내 위치가 계속 공개돼요</div><button class="big blue" data-act="photo" id="photoBtn">' + (C.sending ? '보내는 중…' : '사진 찍어서 보내기') + '</button></div></div>';
