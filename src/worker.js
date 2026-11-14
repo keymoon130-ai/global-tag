@@ -100,7 +100,9 @@ function distToPolyM(pt, poly) {
   }
   return best;
 }
-const EDGE_MARGIN = 10, CONFIRM_MS = 5000, BAD_ACC = 50;
+const EDGE_MARGIN = 10, CONFIRM_MS = 5000, BAD_ACC = 50, MAX_MARGIN = 30;
+// 경계 여유: 폰이 알려준 오차만큼 봐줘요 (최소 10m, 최대 30m). "확실히 나갔을 때"만 판정해요
+const margin = p => Math.min(MAX_MARGIN, Math.max(EDGE_MARGIN, Math.round(p.acc || 0)));
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function cleanName(s) { return String(s || '').replace(/[<>&"]/g, '').trim().slice(0, 12) || '이름없음'; }
 function hexArea(c, r) {
@@ -707,11 +709,11 @@ export class Room extends DurableObject {
         if (!p.connected && p.discAt != null && now - p.discAt >= S.autoOut * 1000) { this.setOut(p, '연결이 ' + dur(S.autoOut) + ' 넘게 끊김'); this.checkWin(); return; }
         if (p.escorting && p.connected) {
           const t = this.escortOf(p), nj = t && this.nearestJail(p);
-          if (t && nj && nj.d <= S.jailRadius) this.jailNow(p, t, nj.jail);
+          if (t && nj && nj.d <= S.jailRadius + margin(p)) this.jailNow(p, t, nj.jail);
         }
-        // 경계 판정: 오차 큰 위치는 무시, 경계선 10m 여유, 5초 넘게 밖에 있어야 경고
+        // 경계 판정: 오차 큰 위치는 무시, 경계선은 오차만큼 여유(10~30m), 5초 넘게 밖에 있어야 경고
         if (p.connected && p.state !== 'escort' && (p.acc == null || p.acc <= BAD_ACC)) {
-          const outNow = !inPoly(p, g.area) && distToPolyM(p, g.area) > EDGE_MARGIN;
+          const outNow = !inPoly(p, g.area) && distToPolyM(p, g.area) > margin(p);
           if (outNow) {
             if (p.outCand == null) p.outCand = now;
             if (p.outsideAt == null) { if (now - p.outCand >= CONFIRM_MS) p.outsideAt = now; }
@@ -720,9 +722,9 @@ export class Room extends DurableObject {
           if (p.state === 'jailed') {
             const j = g.jails.find(x => x.id === p.jailId);
             if (!j) { p.state = 'alive'; p.jailId = null; }
-            else if (distM(p, j) <= S.jailRadius + EDGE_MARGIN) { p.jailGraceUntil = 0; p.jailCand = null; if (p.jailOutAt != null) { p.jailOutAt = null; this.toast(p, '감옥 안으로 돌아왔어요'); } }
+            else if (distM(p, j) <= S.jailRadius + margin(p)) { p.jailGraceUntil = 0; p.jailCand = null; if (p.jailOutAt != null) { p.jailOutAt = null; this.toast(p, '감옥 안으로 돌아왔어요'); } }
             else if (p.jailGraceUntil > now) { /* 감옥까지 걸어오는 중 */ }
-            else if (distM(p, j) > S.jailRadius + EDGE_MARGIN) {
+            else if (distM(p, j) > S.jailRadius + margin(p)) {
               if (p.jailCand == null) p.jailCand = now;
               if (p.jailOutAt == null) { if (now - p.jailCand >= CONFIRM_MS) p.jailOutAt = now; }
               else if (now - p.jailOutAt >= S.boundaryAllow * 1000) { this.setOut(p, '감옥 이탈'); return; }
