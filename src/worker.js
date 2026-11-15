@@ -236,8 +236,8 @@ export class Room extends DurableObject {
   chatFor(p) {
     return (this.g.chat || []).filter(c => c.to.includes(p.id)).slice(-60).map(c => this.chatOut(c, p));
   }
-  chatOut(c, p) { return { id: c.id, at: c.at, name: c.name, mine: c.from === p.id, ch: c.ch, text: c.text || '', voice: c.voice || 0 }; }
-  sendChat(p, text, voice, data) {
+  chatOut(c, p) { const o = { id: c.id, at: c.at, name: c.name, mine: c.from === p.id, ch: c.ch, text: c.text || '', voice: c.voice || 0 }; if (c.lat != null) { o.lat = c.lat; o.lng = c.lng; } return o; }
+  sendChat(p, text, voice, data, pin) {
     const g = this.g, now = Date.now();
     if (p.lastChat && now - p.lastChat < (voice ? 1500 : 400)) return;
     const t = this.chatTargets(p);
@@ -245,6 +245,8 @@ export class Room extends DurableObject {
     p.lastChat = now;
     g.chat = g.chat || [];
     const c = { id: 'm' + (++g.seq), at: now, from: p.id, name: p.name, ch: t.ch, to: t.to, text: voice ? '' : text, voice: voice || 0 };
+    if (pin && p.lat != null && t.ch !== 'all') { c.lat = +p.lat.toFixed(6); c.lng = +p.lng.toFixed(6); } // 빠른 메시지: 같은 편 지도에 30초 동안 핀
+    if (voice) { this.voices = this.voices || new Map(); this.voices.set(c.id, data); if (this.voices.size > 20) this.voices.delete(this.voices.keys().next().value); }
     g.chat.push(c); if (g.chat.length > 80) g.chat.splice(0, g.chat.length - 80);
     for (const [ws, pid] of this.sockets) {
       if (!t.to.includes(pid)) continue;
@@ -369,7 +371,7 @@ export class Room extends DurableObject {
       }
       case 'chat': {
         const text = String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
-        if (text) this.sendChat(p, text);
+        if (text) this.sendChat(p, text, 0, null, !!m.pin);
         return;
       }
       case 'voice': {
@@ -377,6 +379,11 @@ export class Room extends DurableObject {
         const data = String(m.data || '');
         if (!data || data.length > 110000 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return;
         this.sendChat(p, '', Math.max(1, Math.min(10, Math.round(data.length * 3 / 4 / 8000))), data);
+        return;
+      }
+      case 'voiceGet': { // 지난 무전 다시 듣기 (받는 사람이었던 경우만)
+        const c = (g.chat || []).find(x => x.id === m.id), d = this.voices && this.voices.get(m.id);
+        if (c && d && c.to.includes(p.id)) try { ws.send(JSON.stringify({ type: 'voice', id: c.id, name: c.name, data: d, replay: true })); } catch (e) {}
         return;
       }
       case 'pushTest': if (p.push) { this.notify(p, '알림 테스트', '이렇게 알림이 와요. 게임 중 화면이 꺼지면 이 알림으로 알려줘요', true); } return;

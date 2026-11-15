@@ -143,6 +143,33 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .lock .note{background:rgba(255,255,255,.12);border-radius:14px;padding:10px 14px;font-size:16px;font-weight:700}
 .unlock{width:96px;height:96px;border-radius:48px;border:0;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;position:relative;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .unlock svg.ring{position:absolute;inset:0;transform:rotate(-90deg)}
+.chat{position:fixed;inset:0;z-index:890;background:rgba(21,23,26,.5);display:flex;flex-direction:column;justify-content:flex-end}
+.chat .in{background:#fff;border-radius:24px 24px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:flex;flex-direction:column;gap:10px;height:calc(100dvh - env(safe-area-inset-top) - 190px);width:100%;max-width:480px;margin:0 auto}
+.chat .hd{display:flex;align-items:center;gap:8px}
+.chat .hd b{flex:1;font-size:19px}
+.lvl{display:flex;gap:4px;background:#EEF0F3;border-radius:12px;padding:4px}
+.lvl button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font-weight:700;font-size:14px;color:#3A404A}
+.lvl button.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.clist{flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px;overscroll-behavior:contain}
+.cm{max-width:82%;align-self:flex-start;display:flex;flex-direction:column;gap:2px}
+.cm.mine{align-self:flex-end;align-items:flex-end}
+.cm small{font-size:12px;color:var(--sub);padding:0 4px}
+.cm .bb{background:#EEF0F3;border-radius:16px;padding:9px 12px;font-size:16px;line-height:1.4;word-break:break-word}
+.cm.mine .bb{background:var(--blue);color:#fff}
+.cm .bb button{border:0;background:none;color:inherit;font:inherit;font-weight:700;padding:0;display:flex;align-items:center;gap:6px}
+.quick{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.quick button{flex:none;min-height:40px;padding:0 12px;border-radius:20px;border:2px solid #D5DAE1;background:#fff;font-weight:700;font-size:14px;white-space:nowrap}
+.quick button.pin{border-color:#F59F00;background:#FFF9DB}
+.cin{display:flex;gap:6px}
+.cin input{flex:1;min-width:0;height:48px;border-radius:12px;border:2px solid #D5DAE1;padding:0 12px;font-size:16px}
+.cin button{width:72px;border:0;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;font-size:15px}
+.mic{min-height:58px;border:0;border-radius:16px;background:var(--blue);color:#fff;font-weight:900;font-size:17px;display:flex;align-items:center;justify-content:center;gap:8px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none}
+.mic.rec{background:#E03131}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;background:#E03131;color:#fff;font-size:12px;font-weight:900;padding:0 5px;margin-left:4px}
+body.chatting .toasts{top:calc(env(safe-area-inset-top) + 10px)}
+.cpin{position:relative}
+.cpin span{position:absolute;left:-6px;bottom:6px;white-space:nowrap;background:#F59F00;color:#15171A;font-weight:900;font-size:13px;padding:5px 9px;border-radius:12px 12px 12px 2px;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.cpin i{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#F59F00;border:2px solid #fff}
 .holdbtn{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none}
 .vote{display:flex;gap:8px}
 .vote button{flex:1;min-height:56px;border-radius:14px;font-size:18px;font-weight:900;border:2px solid #D5DAE1;background:#fff}
@@ -154,6 +181,7 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 <div id="app"></div>
 <div id="net"></div>
 <div id="lockOv"></div>
+<div id="chatRoot"></div>
 <div class="toasts" id="toasts"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" class="sr" aria-hidden="true" tabindex="-1">
 <script>
@@ -246,6 +274,9 @@ function connect(){
     let m; try { m = JSON.parse(e.data); } catch(err){ return; }
     if (m.type === 'state') { C.st = m; C.offset = m.now - Date.now(); C.stVer = (C.stVer || 0) + 1; render(); }
     else if (m.type === 'toast') { toast(m.text); }
+    else if (m.type === 'chatAll') { C.chat = Array.isArray(m.list) ? m.list : []; chatRefresh(); }
+    else if (m.type === 'chat') { onChat(m.msg); }
+    else if (m.type === 'voice') { onVoice(m); }
     else if (m.type === 'photo') { if (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(m.data)) { C.photos[m.id] = m.data; render(); } }
     else if (m.type === 'error') { C.dup = m.code === 'dupname' ? { canTakeover:m.canTakeover, code:C.code } : null; C.err = m.text; leaveRoom(true); }
     else if (m.type === 'idle') { C.idle = true; C.wantConn = false; }
@@ -266,6 +297,7 @@ function send(o){ if (C.ws && C.open) try { C.ws.send(JSON.stringify(o)); } catc
 function leaveRoom(silent){
   C.wantConn = false; C.code = null; C.st = null; ls('gt_room', null);
   try { if (C.ws) C.ws.close(); } catch(e){}
+  C.chat = []; C.unread = 0; C.voices = {}; C.chatOpen = false; chatRefresh();
   C.ws = null; C.open = false; C.editor = null; C.settingsOpen = false; C.bigMap = false; C.idle = false; C.locked = false;
   if (!silent) toast('방에서 나왔어요');
   history.replaceState(null, '', location.pathname);
@@ -537,6 +569,13 @@ const U = {}; // 화면 갱신
 let maps = [];
 function render(){
   const w = wantScreen();
+  const ph = C.st && C.st.phase;
+  if (ph !== C.lastPhase) { // 새 판이 시작될 때만 알림 단계를 자동으로 되돌려요
+    const wasGame = C.lastPhase === 'hiding' || C.lastPhase === 'playing', nowGame = ph === 'hiding' || ph === 'playing';
+    if (nowGame && !wasGame) C.alertLvl = null;
+    C.lastPhase = ph; if (C.chatOpen) chatRefresh();
+  }
+  if (C.locked && C.chatOpen) { C.chatOpen = false; recStop(); chatRefresh(); }
   if (w !== C.screen) {
     maps.forEach(m => { try { m.remove(); } catch(e){} }); maps = [];
     if (C.wake && w !== 'game') { try { C.wake.release(); } catch(e){} C.wake = null; }
@@ -612,7 +651,7 @@ B.connecting = () => { $('#app').innerHTML = '<div class="scr"><div class="pad" 
 B.lobby = () => {
   $('#app').innerHTML =
   '<div class="scr"><div class="pad">' +
-    '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' + inAppCard() +
+    '<div class="row" style="justify-content:space-between"><h1>대기실</h1><span id="lChat" style="margin-left:auto"></span><button class="link" data-act="leave">나가기</button></div>' + inAppCard() +
     '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div id="lMode" style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="lMode2" class="sub small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
     '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div id="lGeo"></div>' +
@@ -629,6 +668,7 @@ B.lobby = () => {
 U.lobby = () => {
   const st = C.st, s = st.settings, m = me();
   $('#lCode').textContent = st.code;
+  setHTML($('#lChat'), chatBtn());
   $('#lMode').textContent = MODE_NAME[s.mode];
   $('#lMode2').textContent = dur(s.timeLimit) + ' · ' + cw() + ' ' + s.chaserCount + '명';
   $('#lAreaTag').textContent = st.area.length >= 3 ? ('경기장' + (s.mode === 'cops' ? ' · 감옥 ' + st.jails.length + '개' : '')) : '경기장을 아직 안 그렸어요';
@@ -942,6 +982,7 @@ U.game = () => {
     const lay = C.gmap._lay; lay.clearLayers();
     drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops');
     drawTokens(lay, st.tokens);
+    drawPins(lay);
     const e = m.escort;
     if (e) {
       // 도둑: 따라갈 경찰 표시 / 둘 다: 경찰 → 감옥 점선
@@ -954,8 +995,8 @@ U.game = () => {
   const roleName = m.role === 'chaser' ? cw() : rw();
   const rc = m.state === 'out' ? 'r-out' : m.role === 'chaser' ? 'r-chaser' : 'r-runner';
   setHTML($('#gTop'), '<div class="t"><small>' + (hiding ? '숨는 시간' : '남은 시간') + '</small><b>' + fmt(left) + '</b></div><span class="rolechip ' + rc + '">' + (m.state === 'out' ? '관전' : roleName) + '</span>' +
-    '<span style="flex:1;text-align:right;font-size:13px;color:#3A404A">남은 ' + rw() + ' ' + st.alive + '명</span>' +
-    '<button class="chipbtn" data-act="players" style="min-height:40px;padding:0 10px">참가자</button>' +
+    '<span style="flex:1;min-width:0;text-align:right;line-height:1.15;white-space:nowrap;overflow:hidden"><small style="display:block;font-size:11px;color:var(--sub)">' + rw() + '</small><b style="font-size:16px">' + st.alive + '명</b></span>' +
+    chatBtn() + '<button class="chipbtn" data-act="players" style="min-height:40px;padding:0 10px">참가자</button>' +
     (s.photoOn && st.canViewPhotos ? '<button class="chipbtn" data-act="album" style="min-height:40px;padding:0 10px">사진 ' + st.album.length + '</button>' : ''));
   let bn = '';
   if (m.publicByPhoto) bn = '<div class="banner" style="background:#FFE3E3;color:#A51D1D">사진을 안 보내서 내 위치가 모두에게 보여요</div>';
@@ -1166,8 +1207,178 @@ U.result = () => {
     return '<figure>' + (C.photos[a.id] ? '<img src="' + esc(C.photos[a.id]) + '" alt="' + esc(a.from) + '님이 보낸 사진">' : '') + '<figcaption>' + esc(a.from) + '</figcaption></figure>';
   }).join('') + '</div></div>' : '');
   setHTML($('#rList'), '<b>최종 상태</b>' + st.players.map(p => '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #EEF0F3"><span>' + esc(p.name) + '</span><span class="sub">' + (p.role === 'chaser' ? cw() : rw()) + ' · ' + (p.state === 'out' ? '아웃' : p.state === 'jailed' ? '수감' : '생존') + '</span></div>').join(''));
-  setHTML($('#rActions'), '<button class="big blue" data-act="toLobby">대기실로 (한 판 더)</button><button class="mid" data-act="leave">방 나가기</button>');
+  setHTML($('#rActions'), '<button class="big blue" data-act="toLobby">대기실로 (한 판 더)</button>' + chatBtn().replace('chipbtn', 'mid').replace('min-height:40px;padding:0 10px', '') + '<button class="mid" data-act="leave">방 나가기</button>');
 };
+
+// ===================== 채팅 · 무전 =====================
+// 게임 중엔 같은 편끼리만, 대기실·결과 화면에선 모두. 알림은 3단계:
+//   1 읽어주기: 띠링 + (주머니 잠금 중이거나 10초 넘게 화면을 안 만졌으면) 소리 내서 읽어줘요, 무전은 바로 재생
+//   2 소리만: 띠링만, 무전은 눌러야 재생
+//   3 조용히: 화면 배너와 진동만
+// 숨바꼭질 도망자는 소리 때문에 들킬 수 있어서 처음부터 3단계예요
+C.chat = []; C.unread = 0; C.voices = {}; C.alertLvl = null; C.lastTouch = Date.now();
+document.addEventListener('pointerdown', () => { C.lastTouch = Date.now(); }, { capture:true });
+function alertLvl(){
+  if (C.alertLvl) return C.alertLvl;
+  const m = me(), s = S();
+  return s && m && s.mode === 'hide' && m.role === 'runner' && inGame() ? 3 : 1;
+}
+function lookingAtScreen(){ return !C.locked && document.visibilityState === 'visible' && Date.now() - C.lastTouch < 10000; }
+function ding(){
+  if (!audio) return;
+  const t = audio.currentTime; tone(1320, 0.12, 0.25, t); tone(1760, 0.18, 0.25, t + 0.13);
+}
+let ttsReady = false;
+function speak(text){
+  if (!('speechSynthesis' in window)) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 1.05; u.volume = 1; speechSynthesis.speak(u); } catch(e){}
+}
+// 아이폰은 처음 한 번 손으로 누를 때 말하기를 깨워 둬야 나중에 저절로 읽어줘요
+document.addEventListener('pointerdown', () => { if (ttsReady || !('speechSynthesis' in window)) return; ttsReady = true; try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch(e){} }, { capture:true });
+function chatLabel(){
+  const m = me(); if (!C.st || !m) return '채팅';
+  if (!inGame()) return '전체 채팅';
+  return '우리 팀 채팅 · ' + (m.role === 'chaser' ? cw() : rw());
+}
+function quickList(){
+  const m = me(); if (!C.st || !m) return [];
+  if (!inGame()) return [['ㅇㅋ',0],['잠깐만!',0],['다 왔어',0],['시작하자!',0]];
+  if (m.role === 'chaser') return [['여기 있다!',1],['이쪽으로 와!',1],['놓쳤어',0],['어디야?',0]];
+  return [[cw() + ' 여기 있어!',1],['도와줘!',1],['나 안전해',0],['어디야?',0]];
+}
+let lastDing = { name:'', at:0 };
+function onChat(c){
+  if (!c || !c.id) return;
+  if (C.chat.some(x => x.id === c.id)) return;
+  C.chat.push(c); if (C.chat.length > 80) C.chat.shift();
+  if (c.lat != null) C.stVer = (C.stVer || 0) + 1; // 지도 핀 다시 그리기
+  if (!c.mine) {
+    if (!C.chatOpen) C.unread++;
+    const lvl = alertLvl(), now = Date.now();
+    const line = c.voice ? c.name + '님 무전 (' + c.voice + '초)' : c.name + ': ' + c.text;
+    if (!C.chatOpen && !C.locked) toast('💬 ' + line);
+    buzz([60, 60, 60]);
+    const same = lastDing.name === c.name && now - lastDing.at < 3000; // 같은 사람이 연달아 보내면 띠링은 한 번만
+    lastDing = { name:c.name, at:now };
+    if (lvl <= 2 && !same && !c.voice) ding();
+    if (lvl === 1 && !c.voice && !lookingAtScreen()) setTimeout(() => speak(c.name + ', ' + c.text), same ? 0 : 450);
+  }
+  chatRefresh(); render();
+}
+// μ-law (8kHz) ↔ 소리
+function ulawDecode(u){ u = ~u & 0xFF; const sign = u & 0x80, exp = (u >> 4) & 7, man = u & 0x0F; let x = ((man << 3) + 0x84) << exp; x -= 0x84; return (sign ? -x : x) / 32768; }
+function ulawEncode(x){ let v = Math.max(-1, Math.min(1, x)) * 32767; const sign = v < 0 ? 0x80 : 0; v = Math.min(32635, Math.abs(v)) + 0x84; let exp = 7; for (let m = 0x4000; (v & m) === 0 && exp > 0; m >>= 1) exp--; const man = (v >> (exp + 3)) & 0x0F; return ~(sign | (exp << 4) | man) & 0xFF; }
+function playVoice(b64){
+  unlockAudio(); if (!audio) return;
+  try {
+    const bin = atob(b64), n = bin.length, R = 3; // 8kHz → 24kHz로 늘려서 재생 (사파리 호환)
+    const buf = audio.createBuffer(1, n * R, 24000), d = buf.getChannelData(0);
+    let prev = 0;
+    for (let i = 0; i < n; i++) { const x = ulawDecode(bin.charCodeAt(i)); for (let k = 0; k < R; k++) d[i * R + k] = prev + (x - prev) * (k + 1) / R; prev = x; }
+    const src = audio.createBufferSource(), g = audio.createGain(); g.gain.value = 1.6;
+    src.buffer = buf; src.connect(g); g.connect(audio.destination); src.start();
+  } catch(e){}
+}
+function onVoice(v){
+  if (!v || !v.data) return;
+  C.voices[v.id] = v.data;
+  if (v.replay || alertLvl() === 1) playVoice(v.data);
+  chatRefresh();
+}
+// 꾹 눌러서 말하기
+const REC = { on:false, stream:null, node:null, src:null, chunks:[], rate:48000, t0:0, timer:null };
+async function recStart(){
+  if (REC.on) return;
+  REC.on = true; REC.chunks = []; REC.ready = false; chatRefresh();
+  unlockAudio();
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'play-and-record';
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+    if (!REC.on) { stream.getTracks().forEach(t => t.stop()); recCleanup(); return; } // 권한 창 뜨는 사이에 손을 뗐어요
+    REC.stream = stream; REC.rate = audio.sampleRate;
+    REC.src = audio.createMediaStreamSource(stream);
+    REC.node = audio.createScriptProcessor(4096, 1, 1);
+    const mute = audio.createGain(); mute.gain.value = 0;
+    REC.node.onaudioprocess = e => { if (REC.on) REC.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+    REC.src.connect(REC.node); REC.node.connect(mute); mute.connect(audio.destination);
+    REC.t0 = Date.now(); REC.ready = true; buzz(40); chatRefresh();
+    REC.timer = setTimeout(() => recStop(), 10000); // 최대 10초
+  } catch(e) {
+    recCleanup(); REC.on = false; chatRefresh();
+    toast('마이크를 쓸 수 없어요. 브라우저 설정에서 마이크를 허용해 주세요');
+  }
+}
+function recCleanup(){
+  clearTimeout(REC.timer);
+  try { if (REC.src) REC.src.disconnect(); if (REC.node) REC.node.disconnect(); } catch(e){}
+  if (REC.stream) REC.stream.getTracks().forEach(t => t.stop());
+  REC.stream = REC.node = REC.src = null;
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+}
+function recStop(){
+  if (!REC.on) return;
+  const ready = REC.ready, sec = (Date.now() - REC.t0) / 1000, chunks = REC.chunks, rate = REC.rate;
+  REC.on = false; REC.ready = false; recCleanup(); chatRefresh();
+  if (!ready) return;
+  if (sec < 0.5) { toast('버튼을 꾹 누른 채로 말해요'); return; }
+  let total = 0; chunks.forEach(c => total += c.length);
+  const step = rate / 8000, n = Math.floor(total / step), out = new Uint8Array(n);
+  const all = new Float32Array(total); let o = 0; chunks.forEach(c => { all.set(c, o); o += c.length; });
+  for (let i = 0; i < n; i++) { const a = Math.floor(i * step), b = Math.min(total, Math.floor((i + 1) * step)); let sum = 0; for (let k = a; k < b; k++) sum += all[k]; out[i] = ulawEncode(sum / Math.max(1, b - a)); }
+  let bin = ''; for (let i = 0; i < n; i += 8192) bin += String.fromCharCode.apply(null, out.subarray(i, i + 8192));
+  const data = btoa(bin);
+  C.myVoice = data; // 내가 보낸 무전도 다시 들을 수 있게
+  send({ type:'voice', data });
+}
+function canChat(){ const m = me(); return !!(C.st && m && !(inGame() && (m.state === 'out' || m.late))); }
+function chatRefresh(){
+  const root = $('#chatRoot'); if (!root) return;
+  document.body.classList.toggle('chatting', !!(C.chatOpen && C.st));
+  if (!C.chatOpen || !C.st) { if (root.firstChild) root.innerHTML = ''; return; }
+  if (!$('#chatIn')) {
+    root.innerHTML = '<div class="chat" data-act="chatBg"><div class="in">' +
+      '<div class="hd"><b id="cTitle"></b><button class="chipbtn" data-act="chatClose" style="min-height:40px">닫기</button></div>' +
+      '<div class="lvl" id="cLvl"></div>' +
+      '<div class="clist" id="cList"></div>' +
+      '<div class="quick" id="cQuick"></div>' +
+      '<div class="cin"><input id="chatIn" maxlength="200" placeholder="메시지 입력" enterkeyhint="send" autocomplete="off"><button data-act="chatSend">보내기</button></div>' +
+      '<button class="mic" id="micBtn"></button></div></div>';
+    const inp = $('#chatIn');
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); chatSend(); } });
+    const mic = $('#micBtn');
+    mic.addEventListener('pointerdown', e => { e.preventDefault(); if (canChat()) recStart(); });
+    ['pointerup','pointercancel','pointerleave'].forEach(t => mic.addEventListener(t, () => recStop()));
+    mic.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  $('#cTitle').textContent = chatLabel();
+  const lvl = alertLvl(), auto = !C.alertLvl && lvl === 3;
+  setHTML($('#cLvl'), [[1,'읽어주기'],[2,'소리만'],[3,'조용히']].map(x => '<button class="' + (lvl === x[0] ? 'on' : '') + '" data-act="chatLvl" data-lvl="' + x[0] + '">' + x[1] + (auto && x[0] === 3 ? ' (숨는 중)' : '') + '</button>').join(''));
+  const ok = canChat();
+  setHTML($('#cQuick'), ok ? quickList().map(q => '<button class="' + (q[1] ? 'pin' : '') + '" data-act="chatQuick" data-pin="' + q[1] + '">' + esc(q[0]) + (q[1] ? ' 📍' : '') + '</button>').join('') : '');
+  $('#chatIn').disabled = !ok; $('#chatIn').placeholder = ok ? '메시지 입력' : '탈락해서 이번 판엔 채팅을 볼 수만 있어요';
+  $('#micBtn').disabled = !ok;
+  setHTML($('#micBtn'), !ok ? '무전 못 써요' : REC.on ? (REC.ready ? '● 말하는 중… 손 떼면 보내요' : '마이크 켜는 중…') : '🎙 꾹 누르고 말하기 (무전)');
+  $('#micBtn').classList.toggle('rec', REC.on);
+  const list = $('#cList'), atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  const html = C.chat.length ? C.chat.map(c => '<div class="cm' + (c.mine ? ' mine' : '') + '">' + (c.mine ? '' : '<small>' + esc(c.name) + (c.ch !== 'all' && !inGame() ? ' · 팀' : '') + '</small>') +
+    '<div class="bb">' + (c.voice ? '<button data-act="vplay" data-id="' + c.id + '">▶ 무전 ' + c.voice + '초' + (c.mine ? '' : C.voices[c.id] ? '' : ' (다시 듣기)') + '</button>' : esc(c.text) + (c.lat != null ? ' 📍' : '')) + '</div></div>').join('')
+    : '<div class="sub" style="text-align:center;margin:auto">' + (inGame() ? '같은 편끼리만 보여요' : '아직 메시지가 없어요') + '</div>';
+  if (setHTML(list, html) !== false && (atBottom || C.chatJump)) { list.scrollTop = list.scrollHeight; C.chatJump = false; }
+}
+function chatSend(){
+  const inp = $('#chatIn'); if (!inp) return;
+  const t = inp.value.trim(); if (!t) return;
+  send({ type:'chat', text:t }); inp.value = ''; C.chatJump = true;
+}
+function chatBtn(cls){ return '<button class="chipbtn' + (cls ? ' ' + cls : '') + '" data-act="chat" style="min-height:40px;padding:0 10px">채팅' + (C.unread ? '<span class="badge">' + Math.min(99, C.unread) + '</span>' : '') + '</button>'; }
+// 지도 핀: 빠른 메시지를 보낸 자리에 30초 동안
+function drawPins(lay){
+  const now = serverNow();
+  C.chat.forEach(c => {
+    if (c.lat == null || now - c.at > 30000) return;
+    L.marker([c.lat, c.lng], { icon:L.divIcon({ className:'', html:'<div class="cpin"><i></i><span>' + esc((c.mine ? '나' : c.name) + ': ' + c.text) + '</span></div>', iconSize:[0,0] }), interactive:false, keyboard:false, zIndexOffset:1100 }).addTo(lay);
+  });
+}
 
 // ===================== 버튼 처리 =====================
 document.addEventListener('click', e => {
@@ -1187,6 +1398,13 @@ document.addEventListener('click', e => {
     case 'bigmapClose': C.bigMap = false; if (C.bigMapObj) { maps = maps.filter(x => x !== C.bigMapObj); C.bigMapObj.remove(); C.bigMapObj = null; } render(); break;
     case 'sound': C.sound = !C.sound; ls('gt_sound', C.sound ? '1' : '0'); render(); break;
     case 'geoAsk': askGeo(); break;
+    case 'chat': C.chatOpen = true; C.unread = 0; C.chatJump = true; chatRefresh(); render(); break;
+    case 'chatClose': C.chatOpen = false; recStop(); chatRefresh(); render(); break;
+    case 'chatBg': if (e.target === a) { C.chatOpen = false; recStop(); chatRefresh(); render(); } break;
+    case 'chatSend': chatSend(); break;
+    case 'chatLvl': C.alertLvl = +a.dataset.lvl; chatRefresh(); if (C.alertLvl === 1) speak('이렇게 읽어줘요'); else if (C.alertLvl === 2) ding(); break;
+    case 'chatQuick': send({ type:'chat', text:a.textContent.replace(' 📍', ''), pin:a.dataset.pin === '1' }); C.chatJump = true; break;
+    case 'vplay': { const id = a.dataset.id, c = C.chat.find(x => x.id === id); if (!c) break; if (c.mine && C.myVoice && !C.voices[id]) C.voices[id] = C.myVoice; if (C.voices[id]) playVoice(C.voices[id]); else send({ type:'voiceGet', id }); break; }
     case 'outOpen': openOutside(); break;
     case 'outCopy': {
       const url = outUrl();
