@@ -221,7 +221,41 @@ export class Room extends DurableObject {
     server.addEventListener('error', () => this.onClose(server));
     this.ensureTimer();
     this.changed();
+    send({ type: 'chatAll', list: this.chatFor(p) });
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // ---------------- 채팅 · 무전 ----------------
+  // 게임 중엔 같은 편끼리만, 대기실·결과 화면에선 모두에게. 받는 사람은 보낸 순간에 정해요 (편이 바뀌어도 옛날 대화가 안 새게)
+  chatTargets(p) {
+    const g = this.g, inGame = g.phase === 'playing' || g.phase === 'hiding';
+    if (!inGame) return { ch: 'all', to: g.players.map(x => x.id) };
+    if (p.late || p.state === 'out') return null; // 탈락·관전 중엔 모두의 위치가 보여서, 게임 중엔 보내지 못해요
+    return { ch: p.role, to: g.players.filter(x => x.role === p.role && !x.late && x.state !== 'out').map(x => x.id) };
+  }
+  chatFor(p) {
+    return (this.g.chat || []).filter(c => c.to.includes(p.id)).slice(-60).map(c => this.chatOut(c, p));
+  }
+  chatOut(c, p) { return { id: c.id, at: c.at, name: c.name, mine: c.from === p.id, ch: c.ch, text: c.text || '', voice: c.voice || 0 }; }
+  sendChat(p, text, voice, data) {
+    const g = this.g, now = Date.now();
+    if (p.lastChat && now - p.lastChat < (voice ? 1500 : 400)) return;
+    const t = this.chatTargets(p);
+    if (!t) { this.toast(p, '탈락하면 게임이 끝날 때까지 채팅을 볼 수만 있어요'); return; }
+    p.lastChat = now;
+    g.chat = g.chat || [];
+    const c = { id: 'm' + (++g.seq), at: now, from: p.id, name: p.name, ch: t.ch, to: t.to, text: voice ? '' : text, voice: voice || 0 };
+    g.chat.push(c); if (g.chat.length > 80) g.chat.splice(0, g.chat.length - 80);
+    for (const [ws, pid] of this.sockets) {
+      if (!t.to.includes(pid)) continue;
+      const q = g.players.find(x => x.id === pid); if (!q) continue;
+      try {
+        ws.send(JSON.stringify({ type: 'chat', msg: this.chatOut(c, q) }));
+        if (voice && pid !== p.id) ws.send(JSON.stringify({ type: 'voice', id: c.id, name: p.name, data }));
+      } catch (e) {}
+    }
+    g.players.forEach(q => { if (q !== p && t.to.includes(q.id) && !q.connected) this.notify(q, p.name + (voice ? '님 무전' : ''), voice ? '무전이 왔어요. 화면을 켜서 들어 보세요' : text); });
+    this.save();
   }
 
   newPlayer(token, name) {
@@ -332,6 +366,18 @@ export class Room extends DurableObject {
           p.push = { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) } };
         } else p.push = null;
         this.changed(true); return;
+      }
+      case 'chat': {
+        const text = String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
+        if (text) this.sendChat(p, text);
+        return;
+      }
+      case 'voice': {
+        // 8kHz μ-law 소리를 base64로 받아요 (최대 10초 = 80KB)
+        const data = String(m.data || '');
+        if (!data || data.length > 110000 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return;
+        this.sendChat(p, '', Math.max(1, Math.min(10, Math.round(data.length * 3 / 4 / 8000))), data);
+        return;
       }
       case 'pushTest': if (p.push) { this.notify(p, '알림 테스트', '이렇게 알림이 와요. 게임 중 화면이 꺼지면 이 알림으로 알려줘요', true); } return;
       case 'settings':
