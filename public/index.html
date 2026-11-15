@@ -120,6 +120,8 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .ebottom{position:fixed;left:50%;transform:translateX(-50%);width:min(480px,100vw);bottom:0;z-index:600;background:#fff;border-radius:24px 24px 0 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:10px;box-shadow:0 -4px 20px rgba(21,23,26,.12)}
 .tk{position:relative}
 .tk i{position:absolute;left:-10px;top:-10px;width:20px;height:20px;border-radius:50%;background:var(--c);border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.35)}
+.hdc{position:absolute;left:-40px;top:-80px;width:80px;height:80px;transform-origin:40px 80px;pointer-events:none}
+.hdc svg{display:block}
 .tk i.me{left:-13px;top:-13px;width:26px;height:26px;box-shadow:0 0 0 9px rgba(31,111,235,.22),0 2px 5px rgba(0,0,0,.35)}
 .tk i.st{opacity:.7;border-style:dashed}
 .tk span{position:absolute;top:14px;left:0;transform:translateX(-50%);white-space:nowrap;font-size:13px;font-weight:700;color:#15171A;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;pointer-events:none}
@@ -1198,7 +1200,7 @@ document.addEventListener('click', e => {
     case 'reload': location.reload(); break;
     case 'geoHelp': C.geoHelp = true; render(); break;
     case 'geoHelpClose': C.geoHelp = false; render(); break;
-    case 'soundtest': unlockAudio(); siren(1.8); buzz([400,150,400,150,400]); C.checkStep = 'asked'; render(); break;
+    case 'soundtest': if (COMPASS.needPerm && !COMPASS.granted && !COMPASS.denied) askCompass(); unlockAudio(); siren(1.8); buzz([400,150,400,150,400]); C.checkStep = 'asked'; render(); break;
     case 'checkYes': C.checkStep = null; send({ type:'check', ok:true }); toast('준비 완료! 이 소리가 경고음이에요'); break;
     case 'checkNo': C.checkStep = 'help'; render(); break;
     case 'recheck': C.checkStep = null; send({ type:'check', ok:false }); break;
@@ -1222,7 +1224,7 @@ document.addEventListener('click', e => {
       C.editor = null; toast('경기장을 저장했어요'); render(); break;
     }
     case 'start': unlockAudio(); send({ type:'start' }); break;
-    case 'center': if (C.pos) C.gmap.setView([C.pos.lat, C.pos.lng], Math.max(C.gmap.getZoom(), 17)); else toast('내 위치를 아직 못 찾았어요'); break;
+    case 'center': if (COMPASS.needPerm && !COMPASS.granted && !COMPASS.denied) askCompass(); if (C.pos) C.gmap.setView([C.pos.lat, C.pos.lng], Math.max(C.gmap.getZoom(), 17)); else toast('내 위치를 아직 못 찾았어요'); break;
     case 'report': C.askReport = true; render(); break;
     case 'reportNo': C.askReport = false; render(); break;
     case 'reportYes': C.askReport = false; send({ type:'report' }); render(); break;
@@ -1363,9 +1365,25 @@ function radarPanel(){
     : '<button class="mid" data-act="radarGo" style="min-height:44px">레이더 켜기 (' + dur(s.radarActive) + ')</button>';
   return h + '</div>';
 }
+// 내가 보는 방향: 내 점 앞에 부채꼴 빛 (폰을 돌리면 같이 돌아가요)
+const HEAD_SVG = '<svg width="80" height="80" viewBox="0 0 80 80" aria-hidden="true"><defs><radialGradient id="hdg" cx="40" cy="80" r="76" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1F6FEB" stop-opacity=".55"/><stop offset="1" stop-color="#1F6FEB" stop-opacity="0"/></radialGradient></defs><path d="M40 80 L2 14.2 A76 76 0 0 1 78 14.2 Z" fill="url(#hdg)"/></svg>';
+function drawHeading(hide){
+  const map = C.gmap, st = C.st, m = me();
+  const t = st && st.tokens && st.tokens.find(x => x.kind === 'me');
+  const fresh = COMPASS.heading != null && Date.now() - (COMPASS.last || 0) < 3000;
+  if (hide || !map || C.screen !== 'game' || !t || !m || m.state === 'out' || !fresh) { if (C.headMk) { C.headMk.remove(); C.headMk = null; } return; }
+  if (!C.headMk || C.headMk._map !== map) {
+    if (C.headMk) C.headMk.remove();
+    C.headMk = L.marker([t.lat, t.lng], { icon:L.divIcon({ className:'', html:'<div class="hdc">' + HEAD_SVG + '</div>', iconSize:[0,0] }), interactive:false, keyboard:false, zIndexOffset:900 }).addTo(map);
+  } else C.headMk.setLatLng([t.lat, t.lng]);
+  const el = C.headMk.getElement(), c = el && el.querySelector('.hdc');
+  if (c) c.style.transform = 'rotate(' + Math.round(COMPASS.heading) + 'deg)';
+}
 // 지도 위 내 범위 원·시야 부채꼴
 function drawRadarShapes(){
   const map = C.gmap, st = C.st, m = me();
+  { const w = map && C.screen === 'game' && st && st.phase === 'playing' && m && m.role === 'chaser' && m.state === 'alive' && C.pos && st.settings.radarSightOn && !C.locked;
+    drawHeading(!!w); } // 시야 레이더 부채꼴이 보일 땐 그게 방향 표시예요
   const want = map && C.screen === 'game' && st && st.phase === 'playing' && m && m.role === 'chaser' && m.state === 'alive' && C.pos;
   const s = st && st.settings;
   if (!want || !s.radarRangeOn) { if (C.rangeCircle) { C.rangeCircle.remove(); C.rangeCircle = null; } }
