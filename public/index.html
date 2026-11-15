@@ -64,6 +64,14 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .maptag{position:absolute;left:10px;top:10px;z-index:500;background:rgba(255,255,255,.95);border-radius:8px;padding:4px 10px;font-size:13px;font-weight:700}
 .mapbtn{position:absolute;right:10px;top:10px;z-index:500;background:var(--ink);color:#fff;border:0;border-radius:10px;min-height:36px;padding:0 12px;font-size:13px;font-weight:700}
 .full{position:fixed;inset:0;max-width:480px;margin:0 auto;background:#E6EBEF}
+#gmap{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.cam{position:fixed;inset:0;z-index:985;background:#000;display:flex;flex-direction:column}
+.cam video{flex:1;min-height:0;width:100%;object-fit:cover;background:#000}
+.cam .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px calc(env(safe-area-inset-bottom) + 18px);background:#000}
+.cam .shut{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25)}
+.cam .shut:active{background:#fff}
+.cam .side{min-width:72px;height:44px;border:0;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:15px}
+.cam .msg{position:absolute;top:calc(env(safe-area-inset-top) + 16px);left:16px;right:16px;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 4px #000}
 .topbar{position:fixed;left:50%;transform:translateX(-50%);width:calc(min(480px,100vw) - 20px);top:calc(env(safe-area-inset-top) + 10px);z-index:600;background:#fff;border-radius:18px;padding:8px 10px 8px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(21,23,26,.14)}
 .topbar .t small{display:block;font-size:11px;color:var(--sub)}
 .topbar .t b{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.05}
@@ -149,6 +157,8 @@ h1{margin:0;font-size:28px;font-weight:900;letter-spacing:-.3px}
 .chat .hd b{flex:1;font-size:19px}
 .lvl{display:flex;gap:4px;background:#EEF0F3;border-radius:12px;padding:4px}
 .lvl button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font-weight:700;font-size:14px;color:#3A404A}
+.lvl button .badge{margin-left:6px}
+.lvl button:disabled{opacity:.4}
 .lvl button.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .clist{flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px;overscroll-behavior:contain}
 .cm{max-width:82%;align-self:flex-start;display:flex;flex-direction:column;gap:2px}
@@ -184,6 +194,8 @@ body.chatting .toasts{top:calc(env(safe-area-inset-top) + 10px)}
 <div id="chatRoot"></div>
 <div class="toasts" id="toasts"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" class="sr" aria-hidden="true" tabindex="-1">
+<input type="file" id="albumInput" accept="image/*" class="sr" aria-hidden="true" tabindex="-1">
+<div id="camRoot"></div>
 <script>
 (function(){
 'use strict';
@@ -269,7 +281,7 @@ function connect(){
   const url = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/' + C.code + '?token=' + C.token + '&name=' + encodeURIComponent(C.name) + (C.takeover ? '&takeover=1' : '');
   C.takeover = false; C.idle = false; C.idleAuto = false;
   const ws = new WebSocket(url); C.ws = ws;
-  ws.onopen = () => { C.open = true; C.retry = 0; if (C.pos) sendPos(true); resubscribePush(); if (document.visibilityState === 'hidden') send({ type:'away' }); render(); };
+  ws.onopen = () => { C.open = true; C.retry = 0; if (C.pos) sendPos(true); if (C.photoQ) { C.photoQ.at = 0; setTimeout(photoFlush, 300); } resubscribePush(); if (document.visibilityState === 'hidden') send({ type:'away' }); render(); };
   ws.onmessage = e => {
     let m; try { m = JSON.parse(e.data); } catch(err){ return; }
     if (m.type === 'state') { C.st = m; C.offset = m.now - Date.now(); C.stVer = (C.stVer || 0) + 1; render(); }
@@ -277,6 +289,7 @@ function connect(){
     else if (m.type === 'chatAll') { C.chat = Array.isArray(m.list) ? m.list : []; chatRefresh(); }
     else if (m.type === 'chat') { onChat(m.msg); }
     else if (m.type === 'voice') { onVoice(m); }
+    else if (m.type === 'photoOk' || m.type === 'photoErr') { onPhotoReply(m); }
     else if (m.type === 'photo') { if (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(m.data)) { C.photos[m.id] = m.data; render(); } }
     else if (m.type === 'error') { C.dup = m.code === 'dupname' ? { canTakeover:m.canTakeover, code:C.code } : null; C.err = m.text; leaveRoom(true); }
     else if (m.type === 'idle') { C.idle = true; C.wantConn = false; }
@@ -298,6 +311,7 @@ function leaveRoom(silent){
   C.wantConn = false; C.code = null; C.st = null; ls('gt_room', null);
   try { if (C.ws) C.ws.close(); } catch(e){}
   C.chat = []; C.unread = 0; C.voices = {}; C.chatOpen = false; chatRefresh();
+  C.photoQ = null; C.pinAsk = null; C.moveAsk = false; if (typeof camClose === 'function' && CAM.stream) camClose();
   C.ws = null; C.open = false; C.editor = null; C.settingsOpen = false; C.bigMap = false; C.idle = false; C.locked = false;
   if (!silent) toast('방에서 나왔어요');
   history.replaceState(null, '', location.pathname);
@@ -572,7 +586,7 @@ function render(){
   const ph = C.st && C.st.phase;
   if (ph !== C.lastPhase) { // 새 판이 시작될 때만 알림 단계를 자동으로 되돌려요
     const wasGame = C.lastPhase === 'hiding' || C.lastPhase === 'playing', nowGame = ph === 'hiding' || ph === 'playing';
-    if (nowGame && !wasGame) C.alertLvl = null;
+    if (nowGame && !wasGame) { C.alertLvl = null; C.chatTab = 'team'; C.tabUnread = { team:0, all:0 }; }
     C.lastPhase = ph; if (C.chatOpen) chatRefresh();
   }
   if (C.locked && C.chatOpen) { C.chatOpen = false; recStop(); chatRefresh(); }
@@ -739,6 +753,8 @@ const SCHEMA = [
   { h:'술래 넘기기', modes:['tag','hide'] },
   { k:'transfer', t:'bool', l:'술래 넘기기', d:'잡힌 사람이 새 술래가 돼요. 시간이 끝날 때 술래인 사람이 져요', modes:['tag','hide'] },
   { k:'transferCountdown', t:'time', l:'새 술래 대기 시간', d:'새 술래는 이 시간 동안 못 잡아요', sub:true, modes:['tag','hide'], show:v => v('transfer') },
+  { h:'숨은 자리', modes:['hide'] },
+  { k:'hideRadius', t:'num', u:'m', l:'숨은 자리 반경', d:'숨는 시간이 끝난 자리에서 이 거리 밖으로 나가면 경기장 이탈처럼 처리돼요. 자리 옮기기는 한 판에 2번(30초씩)', modes:['hide'] },
   { h:'감옥', modes:['cops'] },
   { k:'jailRadius', t:'num', u:'m', l:'감옥 크기(반지름)', d:'이 원 안에 들어오면 감옥에 도착한 거예요', modes:['cops'] },
   { k:'rescueHold', t:'time', l:'구출 버튼 누르는 시간', d:'도둑이 감옥 옆에서 이만큼 꾹 눌러야 구출돼요', modes:['cops'] },
@@ -791,7 +807,7 @@ const MODE_DEFAULTS = {
   tag:    { revealC2R:'interval', revealR2C:'hidden',   hideTime:60 },
   hide:   { revealC2R:'hidden',   revealR2C:'hidden',   hideTime:120 },
   cops:   { revealC2R:'interval', revealR2C:'interval', hideTime:60 },
-  zombie: { revealC2R:'always',   revealR2C:'hidden',   hideTime:60 }
+  zombie: { revealC2R:'hidden',   revealR2C:'hidden',   hideTime:60 }
 };
 function fEl(k){ return document.querySelector('#sForm [data-k="' + k + '"]'); }
 function getF(k){
@@ -969,6 +985,7 @@ B.game = () => {
     '<button class="lockbtn" data-act="lock"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#fff" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#fff" stroke-width="2"/></svg>주머니 잠금</button>' +
     '<div class="bottom" id="gBottom"></div><div id="gOv"></div></div>';
   const m = makeMap($('#gmap'), true); maps.push(m); C.gmap = m;
+  longPress($('#gmap'), m);
   m.fitBounds(areaBounds(), { paddingTopLeft:[16,110], paddingBottomRight:[16,200] });
   C.gVer = -1;
   keepAwake();
@@ -981,6 +998,7 @@ U.game = () => {
     C.gVer = C.stVer;
     const lay = C.gmap._lay; lay.clearLayers();
     drawArea(lay, st.area, st.jails, s.jailRadius, s.mode === 'cops');
+    if (m.spot && !m.moving) L.circle(m.spot, { radius:s.hideRadius, color:'#7048E8', weight:2, dashArray:'6 5', fillColor:'#7048E8', fillOpacity:0.08, interactive:false }).addTo(lay);
     drawTokens(lay, st.tokens);
     drawPins(lay);
     const e = m.escort;
@@ -1033,6 +1051,10 @@ U.game = () => {
     } else if (m.protectLeft > 0) b = '<div class="hint">보호 시간이에요 · 잠깐 동안은 안 잡혀요</div><div class="big gray">보호 중 ' + Math.ceil(m.protectLeft) + '초</div>';
     else if (m.canReport) b = '<div class="hint">' + cw() + '가 ' + s.catchDist + 'm 안에 있어요 · 잡혔으면 직접 눌러주세요</div><button class="big orange" data-act="report">잡혔어요</button>';
     else b = '<div class="hint">잡혔으면 직접 눌러 주세요</div><button class="mid" data-act="report">잡혔어요</button>';
+    if (s.mode === 'hide' && m.role === 'runner' && !m.rescue && !(m.protectLeft > 0)) {
+      if (m.moving > 0) b = '<div style="text-align:center;font-weight:900;font-size:18px;color:#5F3DC4">자리 옮기는 중 · ' + Math.ceil(m.moving) + '초</div><div class="hint">시간이 끝날 때 서 있는 곳이 새 숨은 자리예요</div>' + b;
+      else if (m.moveLeft > 0) b += '<button class="mid" data-act="moveAsk">자리 옮기기 (' + m.moveLeft + '번 남음)</button>';
+    }
   }
   if (!hiding && m.role === 'chaser' && m.state === 'alive' && m.radar) b = radarPanel() + b;
   setHTML($('#gBottom'), b);
@@ -1052,17 +1074,20 @@ U.game = () => {
     (m.canReport ? '' : '<div class="warnbox" style="text-align:center">지도에서는 ' + cw() + '가 멀리 있는 걸로 나와요.<br>GPS 오차일 수 있으니, 진짜 잡혔으면 눌러 주세요</div>') +
     '<div class="sub" style="text-align:center">신고하면 ' + cw() + '가 확인한 뒤 처리돼요</div><div class="row"><button class="mid" data-act="reportNo" style="flex:1;min-height:62px">취소</button><button class="big orange" data-act="reportYes" style="flex:2">네, 잡혔어요</button></div></div></div>';
   else C.askReport = false;
-  if (m.photoLeft != null) ov += '<div class="sheet"><div class="in"><h3>사진 보낼 시간이에요</h3><div style="font-size:48px;font-weight:900;color:var(--blue);text-align:center;font-variant-numeric:tabular-nums">' + fmt(m.photoLeft) + '</div><div class="sub" style="text-align:center">시간 안에 안 보내면 내 위치가 계속 공개돼요</div><button class="big blue" data-act="photo" id="photoBtn">' + (C.sending ? '보내는 중…' : '사진 찍어서 보내기') + '</button></div></div>';
-  else if (m.publicByPhoto && m.state !== 'out') ov += '<div style="position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 160px);z-index:650;max-width:448px;margin:0 auto"><button class="mid" data-act="photo">' + (C.sending ? '보내는 중…' : '지금이라도 사진 보내기') + '</button></div>';
+  if (m.photoLeft != null) ov += '<div class="sheet"><div class="in"><h3>사진 보낼 시간이에요</h3><div style="font-size:48px;font-weight:900;color:var(--blue);text-align:center;font-variant-numeric:tabular-nums">' + fmt(m.photoLeft) + '</div><div class="sub" style="text-align:center">시간 안에 안 보내면 내 위치가 계속 공개돼요</div>' + photoButtons() + '</div></div>';
+  else if (m.publicByPhoto && m.state !== 'out') ov += '<div style="position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 160px);z-index:650;max-width:448px;margin:0 auto"><button class="mid" data-act="photo"' + (C.photoQ ? ' disabled' : '') + '>' + (C.photoQ ? '보내는 중…' : '지금이라도 사진 보내기') + '</button></div>';
+  if (C.moveAsk && m.moveLeft > 0 && !m.moving) ov += '<div class="sheet"><div class="in"><h3>자리를 옮길까요?</h3><div class="sub" style="text-align:center">30초 동안 자유롭게 움직일 수 있어요.<br>끝나는 곳이 새 숨은 자리예요. (' + m.moveLeft + '번 남음)</div><div class="row"><button class="mid" data-act="moveNo" style="flex:1;min-height:58px">취소</button><button class="big blue" data-act="moveYes" style="flex:2">옮기기 시작</button></div></div></div>';
+  else C.moveAsk = false;
+  if (C.pinAsk && canPin()) ov += pinSheet(); else C.pinAsk = null;
   if (C.albumOpen) ov += albumSheet(st.album);
   if (C.playersOpen) ov += playersSheet(st, m);
   if (C.kickAsk) { const t = st.players.find(p => p.id === C.kickAsk); if (t) ov += '<div class="sheet" style="z-index:975"><div class="in"><h3>' + esc(t.name) + '님 탈락 투표를 열까요?</h3><div class="sub" style="text-align:center">나와 ' + esc(t.name) + '님을 뺀 참가자들이 30초 동안 투표해요.<br>과반이 찬성해야 탈락돼요. ' + esc(t.name) + '님이 "저 여기 있어요"를 누르면 취소돼요.</div><div class="row"><button class="mid" data-act="kickNo" style="flex:1;min-height:58px">취소</button><button class="big orange" data-act="kickYes" style="flex:2">투표 열기</button></div></div></div>'; }
   if (st.vote) ov += voteSheet(st.vote);
-  const warnLeft = m.outsideLeft != null ? m.outsideLeft : m.jailOutLeft;
+  const warnLeft = m.outsideLeft != null ? m.outsideLeft : m.jailOutLeft != null ? m.jailOutLeft : m.spotOutLeft;
   if (warnLeft != null && m.state !== 'out') {
-    const jail = m.outsideLeft == null;
+    const kind = m.outsideLeft != null ? 'area' : m.jailOutLeft != null ? 'jail' : 'spot';
     ov += '<div class="ov red"><svg width="72" height="72" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3L2 21h20L12 3z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>' +
-      '<h2>' + (jail ? '감옥 밖이에요' : '경기장 밖이에요') + '</h2><p>지금 ' + (jail ? '감옥으' : '안으') + '로 돌아오세요</p><div class="count">' + fmt(warnLeft) + '</div><p style="font-size:16px">0초가 되면 탈락해요</p><span class="pill">' + (C.sound ? '경고음 켜짐' : '경고음 꺼짐') + '</span></div>';
+      '<h2>' + (kind === 'jail' ? '감옥 밖이에요' : kind === 'spot' ? '숨은 자리 밖이에요' : '경기장 밖이에요') + '</h2><p>지금 ' + (kind === 'jail' ? '감옥으로' : kind === 'spot' ? '숨은 자리(보라색 원)로' : '안으로') + ' 돌아오세요</p><div class="count">' + fmt(warnLeft) + '</div><p style="font-size:16px">0초가 되면 탈락해요</p><span class="pill">' + (C.sound ? '경고음 켜짐' : '경고음 꺼짐') + '</span></div>';
   }
   setHTML($('#gOv'), ov);
 };
@@ -1085,7 +1110,7 @@ function rulesList(st, m){
   const wait = '숨는 시간엔 ' + (mode === 'zombie' ? '첫 좀비' : c) + '는 <b>눈 감고 제자리</b>에서 기다려요';
   const by = {
     tag: [wait].concat(s.transfer ? ['잡힌 사람이 새 술래가 돼요. 끝날 때 술래인 사람이 져요'] : []),
-    hide: [wait, '숨은 뒤엔 <b>되도록 움직이지 않기</b>'].concat(s.transfer ? ['잡힌 사람이 새 술래가 돼요. 끝날 때 술래인 사람이 져요'] : []),
+    hide: [wait, '숨는 시간이 끝나면 <b>그 자리가 고정</b>돼요. 반경 ' + s.hideRadius + 'm 밖으로 나가면 탈락해요', '<b>자리 옮기기</b>는 한 판에 2번, 30초씩 쓸 수 있어요'].concat(s.transfer ? ['잡힌 사람이 새 술래가 돼요. 끝날 때 술래인 사람이 져요'] : []),
     cops: [wait, '체포되면 <b>경찰을 따라 감옥까지</b> 가요 (탈출 불가)', '경찰은 감옥 바로 옆에서 지키지 않기'],
     zombie: [wait, '감염되면 <b>10초 뒤</b> 좀비가 돼요']
   };
@@ -1150,29 +1175,77 @@ document.addEventListener('pointerup', stopUnlock); document.addEventListener('p
 document.addEventListener('contextmenu', e => { if (e.target.closest('[data-hold],[data-unlock],.lock')) e.preventDefault(); });
 document.addEventListener('touchmove', e => { if (C.locked && e.target.closest('.lock')) e.preventDefault(); }, { passive:false });
 
-// 사진 압축 (약 200KB)
-$('#photoInput').addEventListener('change', async e => {
+// ===================== 사진 =====================
+// 카메라 앱으로 넘어가면 페이지가 잠들거나 꺼져서 사진이 사라질 수 있어요.
+// 그래서 기본은 '화면 안 카메라'로 찍고, 서버가 "받았어요" 할 때까지 다시 보내요.
+function photoButtons(){
+  if (C.photoQ) return '<button class="big blue" disabled>보내는 중…</button><div class="sub small" style="text-align:center">' + (C.open ? '서버가 받을 때까지 자동으로 다시 보내요' : '연결이 끊겼어요 · 다시 연결되면 바로 보내요') + '</div>';
+  return '<button class="big blue" data-act="camOpen">사진 찍기</button>' +
+    '<div class="row"><button class="mid" data-act="photo" style="flex:1;font-size:15px">폰 카메라로 찍기</button><button class="mid" data-act="photoAlbum" style="flex:1;font-size:15px">앨범에서 고르기</button></div>';
+}
+function compressImage(src, w, h){
+  let max = 1280, data = '';
+  for (let tries = 0; tries < 6; tries++) {
+    const k = Math.min(1, max / Math.max(w, h));
+    const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height);
+    data = cv.toDataURL('image/jpeg', 0.72);
+    if (data.length < 270000) break;
+    max = Math.round(max * 0.8);
+  }
+  if (!/^data:image\/jpeg;base64,/.test(data)) throw new Error('encode');
+  return data;
+}
+function queuePhoto(data){ C.photoQ = { data, nonce: rid().slice(0, 12), at: 0 }; photoFlush(); render(); }
+function photoFlush(){
+  const q = C.photoQ; if (!q || !C.open) return;
+  if (q.at && Date.now() - q.at < 5000) return;
+  q.at = Date.now(); send({ type:'photo', data:q.data, nonce:q.nonce });
+}
+setInterval(photoFlush, 2000);
+function onPhotoReply(m){
+  if (!C.photoQ || m.nonce !== C.photoQ.nonce) return;
+  C.photoQ = null;
+  if (m.type === 'photoErr') toast(m.text || '사진을 못 보냈어요');
+  render();
+}
+// 화면 안 카메라
+const CAM = { stream:null };
+async function camOpen(){
+  const root = $('#camRoot');
+  root.innerHTML = '<div class="cam"><video id="camV" playsinline autoplay muted></video><div class="msg" id="camMsg">카메라 켜는 중…</div><div class="bar"><button class="side" data-act="camClose">취소</button><button class="shut" data-act="camShot" aria-label="찍기"></button><span style="min-width:72px"></span></div></div>';
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } }, audio:false });
+    if (!root.firstChild) { camStop(); return; }
+    const v = $('#camV'); v.srcObject = CAM.stream; await v.play().catch(() => {});
+    $('#camMsg').textContent = '주변이 잘 보이게 찍어요';
+  } catch(e) {
+    camClose();
+    toast('화면 안 카메라를 못 켰어요. "폰 카메라로 찍기"를 눌러 주세요');
+  }
+}
+function camStop(){ if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop()); CAM.stream = null; }
+function camClose(){ camStop(); $('#camRoot').innerHTML = ''; }
+function camShot(){
+  const v = $('#camV'); if (!v || !v.videoWidth) return;
+  try { const data = compressImage(v, v.videoWidth, v.videoHeight); camClose(); buzz(40); queuePhoto(data); }
+  catch(e) { camClose(); toast('사진을 만들지 못했어요. 다시 찍어 주세요'); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && CAM.stream) camClose(); });
+// 예비: 폰 카메라 앱 / 앨범
+async function onPhotoFile(e){
   const f = e.target.files && e.target.files[0]; e.target.value = '';
   if (!f) return;
-  C.sending = true; render();
   try {
     const url = URL.createObjectURL(f);
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    let w = img.naturalWidth, h = img.naturalHeight, max = 1280;
-    let data = '';
-    for (let tries = 0; tries < 6; tries++) {
-      const k = Math.min(1, max / Math.max(w, h));
-      const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
-      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-      data = cv.toDataURL('image/jpeg', 0.72);
-      if (data.length < 270000) break;
-      max = Math.round(max * 0.8);
-    }
+    const data = compressImage(img, img.naturalWidth, img.naturalHeight);
     URL.revokeObjectURL(url);
-    send({ type:'photo', data });
-  } catch(err) { toast('사진을 읽지 못했어요. 다시 찍어 주세요'); }
-  C.sending = false; render();
-});
+    queuePhoto(data);
+  } catch(err) { toast('사진을 읽지 못했어요. 다시 골라 주세요'); }
+}
+$('#photoInput').addEventListener('change', onPhotoFile);
+$('#albumInput').addEventListener('change', onPhotoFile);
 
 // ===================== 결과 =====================
 B.result = () => {
@@ -1236,14 +1309,15 @@ function speak(text){
 }
 // 아이폰은 처음 한 번 손으로 누를 때 말하기를 깨워 둬야 나중에 저절로 읽어줘요
 document.addEventListener('pointerdown', () => { if (ttsReady || !('speechSynthesis' in window)) return; ttsReady = true; try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch(e){} }, { capture:true });
-function chatLabel(){
-  const m = me(); if (!C.st || !m) return '채팅';
-  if (!inGame()) return '전체 채팅';
-  return '우리 팀 채팅 · ' + (m.role === 'chaser' ? cw() : rw());
-}
+// 게임 중엔 [우리 팀 | 전체] 두 채널. 탈락한 사람은 전체 채널만 써요
+C.chatTab = 'team'; C.tabUnread = { team:0, all:0 };
+function chatTab(){ const m = me(); if (!inGame()) return 'all'; if (m && (m.state === 'out' || m.late)) return 'all'; return C.chatTab; }
+function msgTab(c){ return c.ch === 'all' ? 'all' : 'team'; }
+function teamName(){ const m = me(); return m && m.role === 'chaser' ? cw() : rw(); }
 function quickList(){
   const m = me(); if (!C.st || !m) return [];
   if (!inGame()) return [['ㅇㅋ',0],['잠깐만!',0],['다 왔어',0],['시작하자!',0]];
+  if (chatTab() === 'all') return [['ㅋㅋㅋ',0],['잘한다!',0],['아깝다',0],['GG',0]];
   if (m.role === 'chaser') return [['여기 있다!',1],['이쪽으로 와!',1],['놓쳤어',0],['어디야?',0]];
   return [[cw() + ' 여기 있어!',1],['도와줘!',1],['나 안전해',0],['어디야?',0]];
 }
@@ -1255,6 +1329,7 @@ function onChat(c){
   if (c.lat != null) C.stVer = (C.stVer || 0) + 1; // 지도 핀 다시 그리기
   if (!c.mine) {
     if (!C.chatOpen) C.unread++;
+    else if (inGame() && msgTab(c) !== chatTab()) C.tabUnread[msgTab(c)]++;
     const lvl = alertLvl(), now = Date.now();
     const line = c.voice ? c.name + '님 무전 (' + c.voice + '초)' : c.name + ': ' + c.text;
     if (!C.chatOpen && !C.locked) toast('💬 ' + line);
@@ -1329,9 +1404,9 @@ function recStop(){
   let bin = ''; for (let i = 0; i < n; i += 8192) bin += String.fromCharCode.apply(null, out.subarray(i, i + 8192));
   const data = btoa(bin);
   C.myVoice = data; // 내가 보낸 무전도 다시 들을 수 있게
-  send({ type:'voice', data });
+  send({ type:'voice', data, ch:chatTab() });
 }
-function canChat(){ const m = me(); return !!(C.st && m && !(inGame() && (m.state === 'out' || m.late))); }
+function canChat(){ const m = me(); if (!C.st || !m) return false; if (!inGame()) return true; if (m.late) return false; return chatTab() === 'all' || m.state !== 'out'; }
 function chatRefresh(){
   const root = $('#chatRoot'); if (!root) return;
   document.body.classList.toggle('chatting', !!(C.chatOpen && C.st));
@@ -1339,9 +1414,10 @@ function chatRefresh(){
   if (!$('#chatIn')) {
     root.innerHTML = '<div class="chat" data-act="chatBg"><div class="in">' +
       '<div class="hd"><b id="cTitle"></b><button class="chipbtn" data-act="chatClose" style="min-height:40px">닫기</button></div>' +
+      '<div class="lvl tabs" id="cTabs"></div>' +
       '<div class="lvl" id="cLvl"></div>' +
       '<div class="clist" id="cList"></div>' +
-      '<div class="quick" id="cQuick"></div>' +
+      '<div class="quick" id="cQuick"></div><div class="sub small" id="cTip" style="text-align:center;margin-top:-4px"></div>' +
       '<div class="cin"><input id="chatIn" maxlength="200" placeholder="메시지 입력" enterkeyhint="send" autocomplete="off"><button data-act="chatSend">보내기</button></div>' +
       '<button class="mic" id="micBtn"></button></div></div>';
     const inp = $('#chatIn');
@@ -1351,27 +1427,60 @@ function chatRefresh(){
     ['pointerup','pointercancel','pointerleave'].forEach(t => mic.addEventListener(t, () => recStop()));
     mic.addEventListener('contextmenu', e => e.preventDefault());
   }
-  $('#cTitle').textContent = chatLabel();
+  const tab = chatTab(), m0 = me();
+  $('#cTitle').textContent = inGame() ? '채팅' : '전체 채팅';
+  C.tabUnread[tab] = 0;
+  setHTML($('#cTabs'), inGame() ? [['team','우리 팀 · ' + teamName()],['all','전체']].map(x => '<button class="' + (tab === x[0] ? 'on' : '') + '" data-act="chatTab" data-tab="' + x[0] + '"' + (x[0] === 'team' && m0 && m0.state === 'out' ? ' disabled' : '') + '>' + esc(x[1]) + (C.tabUnread[x[0]] ? '<span class="badge">' + C.tabUnread[x[0]] + '</span>' : '') + '</button>').join('') : '');
+  $('#cTabs').style.display = inGame() ? '' : 'none';
   const lvl = alertLvl(), auto = !C.alertLvl && lvl === 3;
   setHTML($('#cLvl'), [[1,'읽어주기'],[2,'소리만'],[3,'조용히']].map(x => '<button class="' + (lvl === x[0] ? 'on' : '') + '" data-act="chatLvl" data-lvl="' + x[0] + '">' + x[1] + (auto && x[0] === 3 ? ' (숨는 중)' : '') + '</button>').join(''));
   const ok = canChat();
   setHTML($('#cQuick'), ok ? quickList().map(q => '<button class="' + (q[1] ? 'pin' : '') + '" data-act="chatQuick" data-pin="' + q[1] + '">' + esc(q[0]) + (q[1] ? ' 📍' : '') + '</button>').join('') : '');
-  $('#chatIn').disabled = !ok; $('#chatIn').placeholder = ok ? '메시지 입력' : '탈락해서 이번 판엔 채팅을 볼 수만 있어요';
+  $('#chatIn').disabled = !ok; $('#chatIn').placeholder = ok ? (inGame() ? (tab === 'all' ? '모두에게 보내기' : teamName() + '끼리 보내기') : '메시지 입력') : '이번 판엔 채팅을 볼 수만 있어요';
+  setHTML($('#cTip'), ok && inGame() && tab === 'team' && C.screen === 'game' ? '지도를 꾹 누르면 원하는 곳에 핀을 찍을 수 있어요' : '');
   $('#micBtn').disabled = !ok;
   setHTML($('#micBtn'), !ok ? '무전 못 써요' : REC.on ? (REC.ready ? '● 말하는 중… 손 떼면 보내요' : '마이크 켜는 중…') : '🎙 꾹 누르고 말하기 (무전)');
   $('#micBtn').classList.toggle('rec', REC.on);
   const list = $('#cList'), atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
-  const html = C.chat.length ? C.chat.map(c => '<div class="cm' + (c.mine ? ' mine' : '') + '">' + (c.mine ? '' : '<small>' + esc(c.name) + (c.ch !== 'all' && !inGame() ? ' · 팀' : '') + '</small>') +
+  const shown = inGame() ? C.chat.filter(c => msgTab(c) === tab) : C.chat;
+  const html = shown.length ? shown.map(c => '<div class="cm' + (c.mine ? ' mine' : '') + '">' + (c.mine ? '' : '<small>' + esc(c.name) + (c.ch !== 'all' && !inGame() ? ' · 팀' : '') + '</small>') +
     '<div class="bb">' + (c.voice ? '<button data-act="vplay" data-id="' + c.id + '">▶ 무전 ' + c.voice + '초' + (c.mine ? '' : C.voices[c.id] ? '' : ' (다시 듣기)') + '</button>' : esc(c.text) + (c.lat != null ? ' 📍' : '')) + '</div></div>').join('')
-    : '<div class="sub" style="text-align:center;margin:auto">' + (inGame() ? '같은 편끼리만 보여요' : '아직 메시지가 없어요') + '</div>';
+    : '<div class="sub" style="text-align:center;margin:auto">' + (inGame() ? (tab === 'all' ? '모두가 보는 채팅이에요' : teamName() + '끼리만 보여요') : '아직 메시지가 없어요') + '</div>';
   if (setHTML(list, html) !== false && (atBottom || C.chatJump)) { list.scrollTop = list.scrollHeight; C.chatJump = false; }
 }
 function chatSend(){
   const inp = $('#chatIn'); if (!inp) return;
   const t = inp.value.trim(); if (!t) return;
-  send({ type:'chat', text:t }); inp.value = ''; C.chatJump = true;
+  send({ type:'chat', text:t, ch:chatTab() }); inp.value = ''; C.chatJump = true;
 }
 function chatBtn(cls){ return '<button class="chipbtn' + (cls ? ' ' + cls : '') + '" data-act="chat" style="min-height:40px;padding:0 10px">채팅' + (C.unread ? '<span class="badge">' + Math.min(99, C.unread) + '</span>' : '') + '</button>'; }
+// 지도를 꾹 누르면(0.55초) 그 자리에 같은 편 핀을 찍어요. 손가락이 움직이거나 두 손가락이면 취소(지도 이동)
+function longPress(el, map){
+  let t = null, sx = 0, sy = 0, n = 0;
+  const cancel = () => { clearTimeout(t); t = null; };
+  el.addEventListener('pointerdown', e => {
+    n++; if (n > 1 || !e.isPrimary) { cancel(); return; }
+    sx = e.clientX; sy = e.clientY; cancel();
+    t = setTimeout(() => {
+      t = null;
+      if (!canPin()) return;
+      const r = el.getBoundingClientRect();
+      C.pinAsk = map.containerPointToLatLng([sx - r.left, sy - r.top]); buzz(40); render();
+    }, 550);
+  });
+  el.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel(); });
+  const up = () => { n = Math.max(0, n - 1); cancel(); };
+  ['pointerup','pointercancel'].forEach(k => el.addEventListener(k, up));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+function canPin(){ const m = me(); return !!(C.st && m && inGame() && !m.late && m.state !== 'out' && !C.locked); }
+const PIN_TEXTS = ['여기!', '술래 봤어', '여기로 모여', '숨기 좋아'];
+function pinSheet(){
+  const m = me(), texts = PIN_TEXTS.map(t => t.replace('술래', m && m.role === 'chaser' ? rw() : cw()));
+  return '<div class="sheet" style="z-index:960"><div class="in"><h3>여기에 핀 찍기</h3><div class="sub" style="text-align:center">' + esc(teamName()) + '끼리만 보여요 · 30초 동안</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + texts.map(t => '<button class="mid" data-act="pinSend">' + esc(t) + '</button>').join('') + '</div>' +
+    '<button class="link" data-act="pinNo">취소</button></div></div>';
+}
 // 지도 핀: 빠른 메시지를 보낸 자리에 30초 동안
 function drawPins(lay){
   const now = serverNow();
@@ -1404,7 +1513,10 @@ document.addEventListener('click', e => {
     case 'chatBg': if (e.target === a) { C.chatOpen = false; recStop(); chatRefresh(); render(); } break;
     case 'chatSend': chatSend(); break;
     case 'chatLvl': C.alertLvl = +a.dataset.lvl; chatRefresh(); if (C.alertLvl === 1) speak('이렇게 읽어줘요'); else if (C.alertLvl === 2) ding(); break;
-    case 'chatQuick': send({ type:'chat', text:a.textContent.replace(' 📍', ''), pin:a.dataset.pin === '1' }); C.chatJump = true; break;
+    case 'chatQuick': send({ type:'chat', text:a.textContent.replace(' 📍', ''), pin:a.dataset.pin === '1', ch:chatTab() }); C.chatJump = true; break;
+    case 'pinSend': if (C.pinAsk) { send({ type:'chat', text:a.textContent, at:[C.pinAsk.lat, C.pinAsk.lng] }); toast('핀을 찍었어요 · 같은 편에게 30초 동안 보여요'); } C.pinAsk = null; render(); break;
+    case 'pinNo': C.pinAsk = null; render(); break;
+    case 'chatTab': C.chatTab = a.dataset.tab; C.chatJump = true; chatRefresh(); break;
     case 'vplay': { const id = a.dataset.id, c = C.chat.find(x => x.id === id); if (!c) break; if (c.mine && C.myVoice && !C.voices[id]) C.voices[id] = C.myVoice; if (C.voices[id]) playVoice(C.voices[id]); else send({ type:'voiceGet', id }); break; }
     case 'outOpen': openOutside(); break;
     case 'outCopy': {
@@ -1450,9 +1562,16 @@ document.addEventListener('click', e => {
     case 'cancel': send({ type:'cancel' }); break;
     case 'confirm': send({ type:'confirm', rid:a.dataset.rid }); break;
     case 'deny': send({ type:'deny', rid:a.dataset.rid }); break;
-    case 'photo': if (!C.sending) { send({ type:'photoMode' }); $('#photoInput').click(); } break;
+    case 'photo': if (!C.photoQ) { send({ type:'photoMode' }); $('#photoInput').click(); } break;
+    case 'photoAlbum': if (!C.photoQ) { send({ type:'photoMode' }); $('#albumInput').click(); } break;
+    case 'camOpen': if (!C.photoQ) camOpen(); break;
+    case 'camClose': camClose(); break;
+    case 'camShot': camShot(); break;
     case 'album': C.albumOpen = true; render(); break;
     case 'albumClose': C.albumOpen = false; render(); break;
+    case 'moveAsk': C.moveAsk = true; render(); break;
+    case 'moveNo': C.moveAsk = false; render(); break;
+    case 'moveYes': C.moveAsk = false; send({ type:'moveSpot' }); render(); break;
     case 'toLobby':
       if (!C.open) { toast('연결이 끊겼어요. 다시 연결하는 중이에요'); if (C.code && (!C.ws || C.ws.readyState > 1)) connect(); break; }
       send({ type:'toLobby' }); C.toLobbyWait = Date.now(); render(); break;
@@ -1628,7 +1747,7 @@ let lastPhotoAlert = false;
 setInterval(() => {
   const m = me(); if (!m || !C.st) return;
   const inGame = C.st.phase === 'playing';
-  if (inGame && m.state !== 'out' && (m.outsideLeft != null || m.jailOutLeft != null)) { if (C.sound) siren(0.9); buzz([500,100,300]); }
+  if (inGame && m.state !== 'out' && (m.outsideLeft != null || m.jailOutLeft != null || m.spotOutLeft != null)) { if (C.sound) siren(0.9); buzz([500,100,300]); }
   const ph = m.photoLeft != null;
   if (ph && !lastPhotoAlert) { if (C.sound) siren(0.6); buzz([200,100,200,100,200]); }
   lastPhotoAlert = ph;

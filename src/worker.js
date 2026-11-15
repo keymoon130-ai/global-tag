@@ -39,7 +39,7 @@ const DEFAULTS = {
   mode: 'tag', chaserCount: 1, timeLimit: 900, hideTime: 60, winMode: 'all', winN: 3,
   revealC2R: 'interval', revealC2RSec: 30, revealR2C: 'hidden', revealR2CSec: 30, teamSee: true,
   catchDist: 30, boundaryAllow: 60, disconnectAllow: 60, autoOut: 180, transfer: false, transferCountdown: 10,
-  rescueHold: 3, jailRadius: 20,
+  rescueHold: 3, jailRadius: 20, hideRadius: 15,
   copsMajority: false,
   radarRangeOn: false, radarRangeDist: 50, radarSightOn: false, radarSightDist: 60, radarSightAngle: 60, radarCooldown: 0, radarActive: 15,
   photoOn: false, photoEvery: 600, photoDeadline: 90, photoSenders: 'runners', photoViewers: 'chasers'
@@ -47,7 +47,7 @@ const DEFAULTS = {
 const NUM_LIMITS = {
   chaserCount: [1, 10], timeLimit: [60, 7200], hideTime: [0, 1800], winN: [1, 20], revealC2RSec: [3, 600], revealR2CSec: [3, 600],
   catchDist: [3, 200], boundaryAllow: [5, 600], disconnectAllow: [10, 600], autoOut: [60, 1800], transferCountdown: [0, 120], rescueHold: [1, 30],
-  jailRadius: [5, 100], radarRangeDist: [10, 300], radarSightDist: [10, 300], radarSightAngle: [20, 180], radarCooldown: [0, 600], radarActive: [5, 120], photoEvery: [60, 3600], photoDeadline: [15, 600]
+  jailRadius: [5, 100], hideRadius: [5, 100], radarRangeDist: [10, 300], radarSightDist: [10, 300], radarSightAngle: [20, 180], radarCooldown: [0, 600], radarActive: [5, 120], photoEvery: [60, 3600], photoDeadline: [15, 600]
 };
 const ENUMS = {
   mode: ['tag', 'hide', 'cops', 'zombie'], winMode: ['all', 'n'], revealC2R: ['hidden', 'interval', 'always'],
@@ -60,11 +60,11 @@ const LABELS = {
   mode: '모드', chaserCount: '{C} 인원', timeLimit: '게임 시간', hideTime: '숨는 시간', winMode: '이기는 조건', winN: '잡아야 하는 수',
   revealC2R: '{C}에게 {R} 위치', revealC2RSec: '{C} 위치 보기 간격', revealR2C: '{R}에게 {C} 위치', revealR2CSec: '{R} 위치 보기 간격', teamSee: '같은 편 위치 보기',
   catchDist: '잡는 거리', boundaryAllow: '경기장 밖 허용 시간', disconnectAllow: '화면 꺼짐 허용 시간', autoOut: '연결 끊김 탈락 시간', transfer: '술래 넘기기', transferCountdown: '새 술래 대기 시간',
-  rescueHold: '구출 버튼 누르는 시간', jailRadius: '감옥 크기', copsMajority: '절반 넘게 갇히면 경찰 승리', radarRangeOn: '범위 레이더', radarRangeDist: '범위 레이더 거리', radarSightOn: '시야 레이더', radarSightDist: '시야 레이더 거리', radarSightAngle: '시야각', radarCooldown: '레이더 쉬는 시간', radarActive: '레이더 작동 시간', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
+  rescueHold: '구출 버튼 누르는 시간', jailRadius: '감옥 크기', hideRadius: '숨은 자리 반경', copsMajority: '절반 넘게 갇히면 경찰 승리', radarRangeOn: '범위 레이더', radarRangeDist: '범위 레이더 거리', radarSightOn: '시야 레이더', radarSightDist: '시야 레이더 거리', radarSightAngle: '시야각', radarCooldown: '레이더 쉬는 시간', radarActive: '레이더 작동 시간', photoOn: '사진 모드', photoEvery: '사진 간격', photoDeadline: '사진 제한 시간', photoSenders: '사진 보내는 사람', photoViewers: '사진 보는 사람'
 };
 const VALUE_NAMES = { tag: '술래잡기', hide: '숨바꼭질', cops: '경찰과 도둑', zombie: '좀비감염', all: '전원', n: '정한 수만큼', hidden: '안 보임', interval: '가끔', always: '항상', runners: '{R}만', chasers: '{C}만', true: '켬', false: '끔' };
 const TIME_KEYS = ['timeLimit', 'hideTime', 'revealC2RSec', 'revealR2CSec', 'boundaryAllow', 'disconnectAllow', 'autoOut', 'transferCountdown', 'rescueHold', 'radarCooldown', 'radarActive', 'photoEvery', 'photoDeadline'];
-const UNITS = { chaserCount: '명', winN: '명', catchDist: 'm', jailRadius: 'm', radarRangeDist: 'm', radarSightDist: 'm', radarSightAngle: '°' };
+const UNITS = { chaserCount: '명', winN: '명', catchDist: 'm', jailRadius: 'm', hideRadius: 'm', radarRangeDist: 'm', radarSightDist: 'm', radarSightAngle: '°' };
 function dur(sec) { sec = Math.round(sec); const m = Math.floor(sec / 60), s = sec % 60; return m && s ? m + '분 ' + s + '초' : m ? m + '분' : s + '초'; }
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const IDLE_MS = 15 * 60 * 1000;
@@ -101,6 +101,7 @@ function distToPolyM(pt, poly) {
   return best;
 }
 const EDGE_MARGIN = 10, CONFIRM_MS = 5000, BAD_ACC = 50, MAX_MARGIN = 30;
+const SPOT_MOVES = 2, SPOT_MOVE_MS = 30000; // 숨바꼭질: 자리 옮기기 횟수·시간
 // 경계 여유: 폰이 알려준 오차만큼 봐줘요 (최소 10m, 최대 30m). "확실히 나갔을 때"만 판정해요
 const margin = p => Math.min(MAX_MARGIN, Math.max(EDGE_MARGIN, Math.round(p.acc || 0)));
 // 지도에 보여줄 위치: 여유 안이라 '안에 있음'으로 판정됐으면 지도에서도 안쪽에 그려요 (버그처럼 안 보이게)
@@ -227,9 +228,10 @@ export class Room extends DurableObject {
 
   // ---------------- 채팅 · 무전 ----------------
   // 게임 중엔 같은 편끼리만, 대기실·결과 화면에선 모두에게. 받는 사람은 보낸 순간에 정해요 (편이 바뀌어도 옛날 대화가 안 새게)
-  chatTargets(p) {
+  chatTargets(p, wantAll) {
     const g = this.g, inGame = g.phase === 'playing' || g.phase === 'hiding';
     if (!inGame) return { ch: 'all', to: g.players.map(x => x.id) };
+    if (wantAll) return p.late ? null : { ch: 'all', to: g.players.filter(x => !x.late).map(x => x.id) }; // 전체 채팅: 탈락한 사람도 말할 수 있어요
     if (p.late || p.state === 'out') return null; // 탈락·관전 중엔 모두의 위치가 보여서, 게임 중엔 보내지 못해요
     return { ch: p.role, to: g.players.filter(x => x.role === p.role && !x.late && x.state !== 'out').map(x => x.id) };
   }
@@ -237,15 +239,21 @@ export class Room extends DurableObject {
     return (this.g.chat || []).filter(c => c.to.includes(p.id)).slice(-60).map(c => this.chatOut(c, p));
   }
   chatOut(c, p) { const o = { id: c.id, at: c.at, name: c.name, mine: c.from === p.id, ch: c.ch, text: c.text || '', voice: c.voice || 0 }; if (c.lat != null) { o.lat = c.lat; o.lng = c.lng; } return o; }
-  sendChat(p, text, voice, data, pin) {
+  sendChat(p, text, voice, data, pin, wantAll, pinAt) {
     const g = this.g, now = Date.now();
-    if (p.lastChat && now - p.lastChat < (voice ? 1500 : 400)) return;
-    const t = this.chatTargets(p);
+    // 도배 막기: 3초에 5개까지 (무전은 1초에 1개)
+    p.chatTimes = (p.chatTimes || []).filter(t => now - t < 3000);
+    if (p.chatTimes.length >= 5 || (voice && p.lastChat && now - p.lastChat < 1000)) { this.toast(p, '너무 빨리 보냈어요. 잠깐 뒤에 다시 보내 주세요'); return; }
+    p.chatTimes.push(now);
+    const t = this.chatTargets(p, wantAll);
     if (!t) { this.toast(p, '탈락하면 게임이 끝날 때까지 채팅을 볼 수만 있어요'); return; }
     p.lastChat = now;
     g.chat = g.chat || [];
     const c = { id: 'm' + (++g.seq), at: now, from: p.id, name: p.name, ch: t.ch, to: t.to, text: voice ? '' : text, voice: voice || 0 };
-    if (pin && p.lat != null && t.ch !== 'all') { c.lat = +p.lat.toFixed(6); c.lng = +p.lng.toFixed(6); } // 빠른 메시지: 같은 편 지도에 30초 동안 핀
+    if (t.ch !== 'all') { // 핀은 같은 편 지도에만 30초 동안
+      if (pinAt) { c.lat = +pinAt[0].toFixed(6); c.lng = +pinAt[1].toFixed(6); c.mapPin = true; }
+      else if (pin && p.lat != null) { c.lat = +p.lat.toFixed(6); c.lng = +p.lng.toFixed(6); }
+    }
     if (voice) { this.voices = this.voices || new Map(); this.voices.set(c.id, data); if (this.voices.size > 20) this.voices.delete(this.voices.keys().next().value); }
     g.chat.push(c); if (g.chat.length > 80) g.chat.splice(0, g.chat.length - 80);
     for (const [ws, pid] of this.sockets) {
@@ -372,15 +380,24 @@ export class Room extends DurableObject {
       }
       case 'chat': {
         const text = String(m.text || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
-        if (text) this.sendChat(p, text, 0, null, !!m.pin);
+        let pinAt = null;
+        if (Array.isArray(m.at) && m.at.length === 2) { const a = +m.at[0], o = +m.at[1]; if (isFinite(a) && isFinite(o) && Math.abs(a) <= 90 && Math.abs(o) <= 180 && (p.lat == null || distM(p, { lat: a, lng: o }) < 3000)) pinAt = [a, o]; }
+        if (text) this.sendChat(p, text, 0, null, !!m.pin, m.ch === 'all' && !pinAt, pinAt);
         return;
       }
       case 'voice': {
         // 8kHz μ-law 소리를 base64로 받아요 (최대 10초 = 80KB)
         const data = String(m.data || '');
         if (!data || data.length > 110000 || !/^[A-Za-z0-9+/]+=*$/.test(data)) return;
-        this.sendChat(p, '', Math.max(1, Math.min(10, Math.round(data.length * 3 / 4 / 8000))), data);
+        this.sendChat(p, '', Math.max(1, Math.min(10, Math.round(data.length * 3 / 4 / 8000))), data, false, m.ch === 'all');
         return;
+      }
+      case 'moveSpot': {
+        if (S.mode !== 'hide' || g.phase !== 'playing' || p.role !== 'runner' || p.state !== 'alive' || p.moveUntil > now) return;
+        if (!(p.moveLeft > 0)) { this.toast(p, '자리 옮기기를 다 썼어요'); return; }
+        p.moveLeft--; p.moveUntil = now + SPOT_MOVE_MS; p.spotOutAt = null; p.spotCand = null;
+        this.toast(p, '30초 동안 자리를 옮길 수 있어요. 끝나는 곳이 새 숨은 자리예요');
+        this.changed(true); return;
       }
       case 'voiceGet': { // 지난 무전 다시 듣기 (받는 사람이었던 경우만)
         const c = (g.chat || []).find(x => x.id === m.id), d = this.voices && this.voices.get(m.id);
@@ -426,7 +443,11 @@ export class Room extends DurableObject {
       case 'rescue':
         if (m.on) { if (this.rescueTarget(p)) p.rescueStart = now; } else p.rescueStart = null;
         this.broadcast(); return;
-      case 'photo': this.photo(p, m.data); return;
+      case 'photo': {
+        const r = this.photo(p, m.data, m.nonce);
+        try { ws.send(JSON.stringify(r === true ? { type: 'photoOk', nonce: m.nonce } : { type: 'photoErr', nonce: m.nonce, text: r })); } catch (e) {}
+        return;
+      }
       case 'photoGet': {
         if (!(this.canViewPhotos(p) || g.phase === 'ended') || !g.album.some(a => a.id === m.id)) return;
         (async () => {
@@ -542,6 +563,7 @@ export class Room extends DurableObject {
       p.state = 'alive'; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.freezeUntil = 0;
       p.photoDueAt = null; p.publicByPhoto = false; p.publicByDisc = false; p.trail = []; p.rescueStart = null; p.outReason = ''; p.escortBy = null; p.escorting = null;
       p.outCand = null; p.jailCand = null; p.protectUntil = 0; p.late = false; p.jailGraceUntil = 0;
+      p.spot = null; p.spotOutAt = null; p.spotCand = null; p.moveLeft = SPOT_MOVES; p.moveUntil = 0;
       if (!p.connected && p.discAt == null) p.discAt = now;
     });
     this.clearPhotos(); g.vote = null;
@@ -571,7 +593,7 @@ export class Room extends DurableObject {
     if (!g.players.some(p => p.host) && g.players.length) g.players[0].host = true;
     this.clearPhotos(); g.vote = null;
     g.phase = 'lobby'; g.reports = []; g.winner = null; g.winReason = '';
-    g.players.forEach(p => { p.role = 'runner'; p.state = 'alive'; p.trail = []; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.publicByPhoto = false; p.photoDueAt = null; p.outReason = ''; p.escortBy = null; p.escorting = null; p.late = false; p.outCand = null; p.jailCand = null; p.protectUntil = 0; });
+    g.players.forEach(p => { p.role = 'runner'; p.state = 'alive'; p.trail = []; p.outsideAt = null; p.jailOutAt = null; p.jailId = null; p.publicByPhoto = false; p.photoDueAt = null; p.outReason = ''; p.escortBy = null; p.escorting = null; p.late = false; p.outCand = null; p.jailCand = null; p.protectUntil = 0; p.spot = null; p.spotOutAt = null; p.spotCand = null; p.moveUntil = 0; });
     this.changed(true);
   }
   setOut(p, reason) {
@@ -696,10 +718,14 @@ export class Room extends DurableObject {
   }
   canViewPhotos(v) { const S = this.g.settings; return S.photoViewers === 'all' || v.role === 'chaser' || v.state === 'out'; }
   isPhotoSender(p) { const S = this.g.settings; return p.state !== 'out' && p.state !== 'jailed' && p.state !== 'escort' && (S.photoSenders === 'all' || p.role === 'runner'); }
-  photo(p, data) {
+  photo(p, data, nonce) {
     const g = this.g;
-    if (g.phase !== 'playing' || typeof data !== 'string' || data.length > 700000 || !PHOTO_RE.test(data)) return;
-    if (p.photoDueAt == null && !p.publicByPhoto) return;
+    if (nonce && p.lastPhotoNonce === nonce) return true; // 다시 보낸 같은 사진
+    if (g.phase !== 'playing') return '게임 중이 아니라서 사진을 못 받았어요';
+    if (typeof data !== 'string' || !PHOTO_RE.test(data)) return '사진 형식이 이상해요. 다시 찍어 주세요';
+    if (data.length > 700000) return '사진이 너무 커요. 다시 찍어 주세요';
+    if (p.photoDueAt == null && !p.publicByPhoto) return '지금은 사진을 보낼 때가 아니에요';
+    p.lastPhotoNonce = nonce || null;
     const id = 'ph' + (++g.seq);
     this.photos[id] = { data };
     this.ctx.storage.put('ph:' + id, data).catch(() => {});
@@ -709,6 +735,7 @@ export class Room extends DurableObject {
     this.toast(p, '사진을 보냈어요');
     this.toastWhere(v => v !== p && this.canViewPhotos(v), p.name + '님이 사진을 보냈어요');
     this.changed();
+    return true;
   }
   endGame(win, reason) {
     const g = this.g;
@@ -809,6 +836,17 @@ export class Room extends DurableObject {
               else if (now - p.jailOutAt >= S.boundaryAllow * 1000) { this.setOut(p, '감옥 이탈'); return; }
             } else { p.jailCand = null; if (p.jailOutAt != null) { p.jailOutAt = null; this.toast(p, '감옥 안으로 돌아왔어요'); } }
           } else { p.jailOutAt = null; p.jailCand = null; }
+          // 숨바꼭질: 숨는 시간이 끝난 자리에서 반경 밖으로 못 나가요 (자리 옮기기 중엔 자유)
+          if (S.mode === 'hide' && p.role === 'runner' && p.state === 'alive') {
+            if (p.moveUntil && now >= p.moveUntil) { p.moveUntil = 0; p.spot = { lat: p.lat, lng: p.lng }; this.toast(p, '여기가 새 숨은 자리예요. 반경 ' + S.hideRadius + 'm 안에 있어요'); this.changed(); }
+            if (!p.spot && !p.moveUntil) { p.spot = { lat: p.lat, lng: p.lng }; this.toast(p, '숨은 자리가 고정됐어요. 반경 ' + S.hideRadius + 'm 밖으로 나가면 안 돼요'); }
+            if (p.moveUntil || !p.spot || distM(p, p.spot) <= S.hideRadius + margin(p)) { p.spotCand = null; if (p.spotOutAt != null) { p.spotOutAt = null; this.toast(p, '숨은 자리로 돌아왔어요'); } }
+            else {
+              if (p.spotCand == null) p.spotCand = now;
+              if (p.spotOutAt == null) { if (now - p.spotCand >= CONFIRM_MS) p.spotOutAt = now; }
+              else if (now - p.spotOutAt >= S.boundaryAllow * 1000) { this.setOut(p, '숨은 자리 이탈'); return; }
+            }
+          } else { p.spot = null; p.spotOutAt = null; p.spotCand = null; p.moveUntil = 0; }
         }
         if (!p.connected && !p.publicByDisc && p.discAt != null && now - p.discAt >= S.disconnectAllow * 1000) {
           p.publicByDisc = true;
@@ -856,6 +894,7 @@ export class Room extends DurableObject {
     const playing = g.phase === 'playing', inGame = playing || g.phase === 'hiding';
     const tokens = [];
     const show = (p, pos) => (!inGame || p.state === 'out' || p.state === 'escort') ? { lat: pos.lat, lng: pos.lng }
+      : (p.spot && !(p.moveUntil > now)) ? shownPos(p, pos, g.area, p.spot, S.hideRadius)
       : shownPos(p, pos, g.area, p.state === 'jailed' ? g.jails.find(j => j.id === p.jailId) : null, S.jailRadius);
     g.players.forEach(p => {
       const pos = p.connected ? (p.lat != null ? { lat: p.lat, lng: p.lng } : null) : p.known;
@@ -882,6 +921,9 @@ export class Room extends DurableObject {
       hasPos: v.lat != null, acc: v.acc,
       outsideLeft: v.outsideAt != null ? Math.max(0, S.boundaryAllow - (now - v.outsideAt) / 1000) : null,
       jailOutLeft: v.jailOutAt != null ? Math.max(0, S.boundaryAllow - (now - v.jailOutAt) / 1000) : null,
+      spotOutLeft: v.spotOutAt != null ? Math.max(0, S.boundaryAllow - (now - v.spotOutAt) / 1000) : null,
+      spot: v.spot && S.mode === 'hide' ? [v.spot.lat, v.spot.lng] : null, moveLeft: v.moveLeft == null ? SPOT_MOVES : v.moveLeft,
+      moving: v.moveUntil > now ? (v.moveUntil - now) / 1000 : 0,
       photoLeft: v.photoDueAt != null ? Math.max(0, (v.photoDueAt - now) / 1000) : null,
       publicByPhoto: v.publicByPhoto, publicByDisc: v.publicByDisc,
       freezeLeft: v.freezeUntil > now ? (v.freezeUntil - now) / 1000 : 0,
