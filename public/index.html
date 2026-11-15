@@ -579,7 +579,7 @@ function render(){
   if (w !== C.screen) {
     maps.forEach(m => { try { m.remove(); } catch(e){} }); maps = [];
     if (C.wake && w !== 'game') { try { C.wake.release(); } catch(e){} C.wake = null; }
-    C.screen = w; C.askReport = false; C.albumOpen = false; C.playersOpen = false; C.kickAsk = null;
+    C.screen = w; C.toLobbyWait = 0; C.askReport = false; C.albumOpen = false; C.playersOpen = false; C.kickAsk = null;
     if (w !== 'game') C.locked = false;
     $('#app').innerHTML = ''; $('#app')._h = null;
     B[w]();
@@ -591,7 +591,7 @@ function render(){
   if (C.locked && C.screen === 'game' && C.unlockT && $('#unlockRing')) $('#unlockRing').setAttribute('stroke-dashoffset', 2 * Math.PI * 44 * (1 - Math.min(1, C.unlockP || 0)));
   else setHTML($('#lockOv'), C.locked && C.screen === 'game' ? lockScreen() : '');
 }
-setInterval(() => { if (C.screen === 'game' || C.screen === 'lobby' || C.screen === 'waiting') render(); }, 500);
+setInterval(() => { if (C.screen === 'game' || C.screen === 'lobby' || C.screen === 'waiting' || (C.screen === 'result' && C.toLobbyWait)) render(); }, 500);
 
 // ===================== 시작 =====================
 B.start = () => {
@@ -1207,7 +1207,8 @@ U.result = () => {
     return '<figure>' + (C.photos[a.id] ? '<img src="' + esc(C.photos[a.id]) + '" alt="' + esc(a.from) + '님이 보낸 사진">' : '') + '<figcaption>' + esc(a.from) + '</figcaption></figure>';
   }).join('') + '</div></div>' : '');
   setHTML($('#rList'), '<b>최종 상태</b>' + st.players.map(p => '<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid #EEF0F3"><span>' + esc(p.name) + '</span><span class="sub">' + (p.role === 'chaser' ? cw() : rw()) + ' · ' + (p.state === 'out' ? '아웃' : p.state === 'jailed' ? '수감' : '생존') + '</span></div>').join(''));
-  setHTML($('#rActions'), '<button class="big blue" data-act="toLobby">대기실로 (한 판 더)</button>' + chatBtn().replace('chipbtn', 'mid').replace('min-height:40px;padding:0 10px', '') + '<button class="mid" data-act="leave">방 나가기</button>');
+  const waitL = C.toLobbyWait && Date.now() - C.toLobbyWait < 5000;
+  setHTML($('#rActions'), '<button class="big blue" data-act="toLobby"' + (waitL ? ' disabled' : '') + '>' + (waitL ? '대기실로 가는 중…' : '대기실로 (한 판 더)') + '</button>' + chatBtn().replace('chipbtn', 'mid').replace('min-height:40px;padding:0 10px', '') + '<button class="mid" data-act="leave">방 나가기</button>');
 };
 
 // ===================== 채팅 · 무전 =====================
@@ -1452,7 +1453,9 @@ document.addEventListener('click', e => {
     case 'photo': if (!C.sending) { send({ type:'photoMode' }); $('#photoInput').click(); } break;
     case 'album': C.albumOpen = true; render(); break;
     case 'albumClose': C.albumOpen = false; render(); break;
-    case 'toLobby': send({ type:'toLobby' }); break;
+    case 'toLobby':
+      if (!C.open) { toast('연결이 끊겼어요. 다시 연결하는 중이에요'); if (C.code && (!C.ws || C.ws.readyState > 1)) connect(); break; }
+      send({ type:'toLobby' }); C.toLobbyWait = Date.now(); render(); break;
     case 'jailNow': send({ type:'jailNow' }); break;
     case 'lock': C.locked = true; C.unlockP = 0; keepAwake(); render(); break;
     case 'players': C.playersOpen = true; render(); break;

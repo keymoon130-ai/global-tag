@@ -336,7 +336,8 @@ export class Room extends DurableObject {
     const g = this.g; if (!g) return;
     const pid = this.sockets.get(ws);
     const p = g.players.find(x => x.id === pid);
-    if (!p) return;
+    // 목록에서 빠진 사람의 폰이 아직 연결돼 있으면: 무시하지 말고 다시 들어오게 해요 (화면이 멈추지 않게)
+    if (!p) { this.sockets.delete(ws); try { ws.close(4011, 'rejoin'); } catch (e) {} return; }
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     const S = g.settings, now = Date.now();
     if (m.type !== 'ping' && m.type !== 'pos') this.lastActive = now;
@@ -561,9 +562,11 @@ export class Room extends DurableObject {
   }
   toLobby() {
     const g = this.g;
-    // 나간 사람·끊긴 사람은 목록에서 빼요 (다시 들어오면 새로 합류)
-    const gone = g.players.filter(p => p.left || !p.connected);
+    // '나가기'를 눌렀거나 연결이 완전히 끊긴 사람만 빼요. 화면만 잠깐 꺼진 사람(연결은 살아 있음)은 그대로 둬요
+    const open = new Set(this.sockets.values());
+    const gone = g.players.filter(p => p.left || !open.has(p.id));
     g.players = g.players.filter(p => !gone.includes(p));
+    for (const [ws, pid] of [...this.sockets]) if (gone.some(p => p.id === pid)) { this.sockets.delete(ws); try { ws.close(4011, 'rejoin'); } catch (e) {} }
     if (gone.length) this.toastAll('나갔거나 연결이 끊긴 ' + gone.map(p => p.name).join(', ') + '님은 목록에서 뺐어요');
     if (!g.players.some(p => p.host) && g.players.length) g.players[0].host = true;
     this.clearPhotos(); g.vote = null;
