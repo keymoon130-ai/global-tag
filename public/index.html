@@ -170,7 +170,14 @@ function fmt(sec){ const s = Math.max(0, Math.ceil(sec)); return Math.floor(s/60
 function setHTML(el, html){ if (el && el._h !== html) { el.innerHTML = html; el._h = html; } }
 
 const C = {
-  token: ls('gt_token') || (() => { const t = rid(); ls('gt_token', t); return t; })(),
+  token: (() => { // 앱 안 브라우저에서 넘어왔으면 같은 사람으로 이어서 들어가요
+    const h = new URLSearchParams(location.search).get('me'), r = new URLSearchParams(location.search).get('room');
+    if (h && /^[A-Za-z0-9_-]{6,64}\./.test(h)) {
+      const i = h.indexOf('.'); ls('gt_token', h.slice(0, i)); ls('gt_name', h.slice(i + 1).slice(0, 12)); if (r) ls('gt_room', r.toUpperCase().slice(0, 4));
+      try { history.replaceState(null, '', location.pathname + (r ? '?room=' + encodeURIComponent(r) : '')); } catch(e){}
+    }
+    return null;
+  })() || ls('gt_token') || (() => { const t = rid(); ls('gt_token', t); return t; })(),
   name: ls('gt_name') || '',
   code: ls('gt_room') || null,
   sound: ls('gt_sound') !== '0',
@@ -317,6 +324,49 @@ function awakeCard(){
   const sec = dur(S() ? S().disconnectAllow : 60);
   return '<div class="warnbox" style="display:flex;gap:10px;align-items:flex-start"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:1px"><rect x="6" y="2" width="12" height="20" rx="2.5" fill="none" stroke="#5C4400" stroke-width="2"/><path d="M10 18h4" stroke="#5C4400" stroke-width="2" stroke-linecap="round"/></svg><div><b>게임하는 동안 화면을 켜 두세요.</b> 화면이 켜진 채로 주머니에 넣으면 돼요. 화면을 잠그면 위치가 끊기고, ' + sec + ' 지나면 내 위치가 모두에게 공개돼요.' + (!('wakeLock' in navigator) ? '<br><b>이 폰은 화면 켜두기가 자동으로 안 될 수 있어요.</b> 설정에서 자동 잠금을 \'안 함\'으로 바꿔 주세요.' : '') + ' 주머니 속 오작동은 게임 화면의 <b>잠금</b> 버튼으로 막을 수 있어요.</div></div>';
 }
+
+// ===================== 앱 안 브라우저 (인스타·카톡 등) =====================
+// 앱 안에서 열면 그 앱의 위치 권한을 빌려 써서 위치가 안 될 수 있고, 푸시 알림도 안 돼요
+function inAppName(){
+  const ua = navigator.userAgent;
+  if (/KAKAOTALK/i.test(ua)) return '카카오톡';
+  if (/Instagram/i.test(ua)) return '인스타그램';
+  if (/NAVER\(inapp|NAVER\//.test(ua)) return '네이버';
+  if (/FBAN|FBAV|FB_IAB/.test(ua)) return '페이스북';
+  if (/ Line\//.test(ua)) return '라인';
+  if (/DaumApps/i.test(ua)) return '다음';
+  if (/Threads|Barcelona/.test(ua)) return '스레드';
+  return '';
+}
+const IS_ANDROID = /Android/.test(navigator.userAgent);
+// 외부 브라우저에서 열 주소 (방 코드와 내 정보를 같이 넘겨서 다시 입력할 필요 없게)
+function outUrl(){
+  const q = [];
+  const room = C.code || C.joinCode;
+  if (room) q.push('room=' + room);
+  if (C.name) q.push('me=' + encodeURIComponent(C.token + '.' + C.name));
+  return location.origin + '/' + (q.length ? '?' + q.join('&') : '');
+}
+function openOutside(){
+  const url = outUrl(), app = inAppName();
+  if (app === '카카오톡') location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+  else if (IS_ANDROID) location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+}
+function inAppCard(){
+  const app = inAppName(); if (!app) return '';
+  const auto = app === '카카오톡' || IS_ANDROID;
+  return '<div class="card" style="display:flex;flex-direction:column;gap:10px;border:2px solid var(--red)">' +
+    '<div style="font-size:18px;font-weight:900">' + app + ' 앱 안에서 열렸어요</div>' +
+    '<div class="sub small">이대로면 <b>위치가 안 잡히거나</b> 화면이 꺼졌을 때 <b>알림을 못 받을 수 있어요.</b> 외부 브라우저로 열어 주세요.</div>' +
+    (auto ? '<button class="big blue" data-act="outOpen">' + (IS_IOS ? 'Safari' : '크롬') + '에서 열기</button>'
+      : '<ol style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px;font-size:15px">' +
+        '<li>화면 ' + (app === '인스타그램' ? '오른쪽 위' : '위나 아래') + '의 <b>⋯</b> 버튼을 눌러요</li>' +
+        '<li><b>외부 브라우저에서 열기</b>(또는 <b>Safari로 열기</b>)를 눌러요</li></ol>' +
+        '<button class="mid" data-act="outCopy">주소 복사 → Safari에 붙여넣기</button>') +
+  '</div>';
+}
+// 카톡은 처음 한 번 자동으로 외부 브라우저로 넘겨요
+try { if (inAppName() === '카카오톡' && !sessionStorage.getItem('gt_out')) { sessionStorage.setItem('gt_out', '1'); setTimeout(openOutside, 300); } } catch(e){}
 
 // ===================== 위치 =====================
 // 순간이동 거르기: 사람이 뛸 수 없는 속도로 움직인 위치는 GPS가 튄 걸로 보고 버려요
@@ -510,7 +560,7 @@ B.start = () => {
       '<svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="26" fill="#1F6FEB"/><circle cx="28" cy="28" r="15" fill="none" stroke="#fff" stroke-width="4"/><circle cx="28" cy="28" r="5" fill="#fff"/></svg>' +
       '<h1 style="font-size:34px">글로벌 술래잡기</h1><div class="sub" style="font-size:17px">친구들과 진짜 위치로 하는 술래잡기</div>' +
     '</div>' +
-    '<div id="sErr"></div>' +
+    '<div id="sErr"></div>' + inAppCard() +
     '<div style="display:flex;flex-direction:column;gap:8px"><label for="nick" style="font-weight:700">닉네임</label><input id="nick" class="input" maxlength="12" placeholder="이름을 적어주세요" autocomplete="nickname"></div>' +
     '<div style="display:flex;flex-direction:column;gap:12px">' +
       '<button class="big blue" id="bCreate">방 만들기</button>' +
@@ -560,7 +610,7 @@ B.connecting = () => { $('#app').innerHTML = '<div class="scr"><div class="pad" 
 B.lobby = () => {
   $('#app').innerHTML =
   '<div class="scr"><div class="pad">' +
-    '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' +
+    '<div class="row" style="justify-content:space-between"><h1>대기실</h1><button class="link" data-act="leave">나가기</button></div>' + inAppCard() +
     '<div class="card row" style="padding:12px 12px 12px 16px"><div><div class="sub small">방 코드</div><div id="lCode" style="font-size:24px;font-weight:900;letter-spacing:4px"></div></div><div style="width:1px;align-self:stretch;background:#EEF0F3"></div><div style="flex:1;min-width:0"><div id="lMode" style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div><div id="lMode2" class="sub small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><button class="chipbtn" data-act="share">초대</button></div>' +
     '<div class="mapcard"><div class="map" id="lmap"></div><span class="maptag" id="lAreaTag">경기장</span><button class="mapbtn" data-act="bigmap">크게 보기</button></div>' +
     '<div id="lGeo"></div>' +
@@ -1135,6 +1185,12 @@ document.addEventListener('click', e => {
     case 'bigmapClose': C.bigMap = false; if (C.bigMapObj) { maps = maps.filter(x => x !== C.bigMapObj); C.bigMapObj.remove(); C.bigMapObj = null; } render(); break;
     case 'sound': C.sound = !C.sound; ls('gt_sound', C.sound ? '1' : '0'); render(); break;
     case 'geoAsk': askGeo(); break;
+    case 'outOpen': openOutside(); break;
+    case 'outCopy': {
+      const url = outUrl();
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('주소를 복사했어요. Safari 주소창에 붙여넣어 주세요'), () => { prompt('이 주소를 길게 눌러 복사해 주세요', url); });
+      break;
+    }
     case 'pushOn': enablePush(); break;
     case 'pushTest': send({ type:'pushTest' }); toast('알림을 보냈어요. 몇 초 안에 와요'); break;
     case 'iosGuide': C.iosGuide = !C.iosGuide; render(); break;
